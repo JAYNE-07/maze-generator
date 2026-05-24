@@ -112,13 +112,18 @@ export async function regenerateOne(
  * no two puzzles share a shape or a pair of symbols. Fetches run through a
  * small concurrency pool to stay reasonably fast.
  */
+export interface BatchResult {
+  book: BookMaze[];
+  warning?: string;
+}
+
 export async function generateBatch(
   keyword: string,
   baseSeed: number,
   cols: number,
   count: number,
   onProgress: (done: number, total: number) => void,
-): Promise<BookMaze[]> {
+): Promise<BatchResult> {
   const CONCURRENCY = 3;
   const results: (BookMaze | null)[] = new Array(count).fill(null);
   let completed = 0;
@@ -203,6 +208,9 @@ export async function generateBatch(
     { cols: Math.floor(cols * 0.85), attempts: 4, pool: 3, waitMs: 2000, opts: {} },
     { cols: Math.floor(cols * 0.7), attempts: 5, pool: 2, waitMs: 5000, opts: {} },
     { cols: Math.floor(cols * 0.55), attempts: 6, pool: 2, waitMs: 7000, opts: {} },
+    // Last-resort: skip Pollinations entirely, fall through to Iconify only.
+    // Almost always succeeds for canonical keywords.
+    { cols: Math.floor(cols * 0.5), attempts: 8, pool: 2, waitMs: 1000, opts: { skipAI: true } },
   ];
 
   for (const r of refills) {
@@ -220,11 +228,12 @@ export async function generateBatch(
     );
   }
   if (book.length < count) {
-    throw new Error(
-      `Only built ${book.length}/${count} mazes — the image service kept failing. Try a lower difficulty, a different keyword, or a smaller count.`,
-    );
+    return {
+      book,
+      warning: `Built ${book.length} of ${count} mazes — the image service rate-limited a few. Open or re-export anytime; the ${book.length} mazes are ready to use.`,
+    };
   }
-  return book;
+  return { book };
 }
 
 function placeImage(

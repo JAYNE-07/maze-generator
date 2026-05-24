@@ -51,6 +51,7 @@ export default function App() {
   const [count, setCount] = useState(200);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
   const [mazes, setMazes] = useState<BookMaze[]>([]);
   const [page, setPage] = useState(0);
   const [solMode, setSolMode] = useState<SolutionMode>('after-each');
@@ -82,7 +83,7 @@ export default function App() {
   const runBatch = useCallback(
     async (kw: string, base: number) => {
       setProgress({ label: 'Generating unique shapes', done: 0, total: count });
-      const list = await generateBatch(
+      const { book: list, warning } = await generateBatch(
         kw,
         base,
         LEVELS[level].cols,
@@ -96,6 +97,8 @@ export default function App() {
       setUserPath([]);
       setSolved(false);
       setShowSolution(false);
+      // Partial-success warning is non-fatal — book is still usable.
+      setWarning(warning ?? '');
       setStatus('ready');
       setProgress(null);
     },
@@ -107,6 +110,7 @@ export default function App() {
     if (!kw || busy) return;
     setStatus('loading');
     setError('');
+    setWarning('');
     setMazes([]);
     // Reroll the shape seed on every Generate so the same keyword yields a
     // different set of shapes (and a different order) each run.
@@ -123,6 +127,7 @@ export default function App() {
   const regenSingle = useCallback(async () => {
     if (busy || !maze) return;
     setError('');
+    setWarning('');
     setProgress({
       label: `Regenerating maze ${page + 1}`,
       done: 0,
@@ -449,6 +454,11 @@ export default function App() {
       )}
 
       {error && <div className="error">{error}</div>}
+      {warning && !error && (
+        <div className="error" style={{ background: '#1d2540', borderColor: '#3b4d80', color: '#ffd58a' }}>
+          {warning}
+        </div>
+      )}
 
       {status === 'loading' && !progress && (
         <div className="stage loadingbox">

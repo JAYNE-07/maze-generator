@@ -1377,6 +1377,10 @@ function mulberry32(seed: number): () => number {
 let cacheKey = '';
 let cacheOrder: number[] = [];
 
+/** Sorted list of every canonical keyword (165). Used by the UI keyword
+ *  picker so users can browse without referring to the CSV. */
+export const CANONICAL_KEYWORDS: string[] = Object.keys(CATEGORIES).sort();
+
 export function resolveCategory(keyword: string): string | null {
   const n = keyword.trim().toLowerCase();
   if (CATEGORIES[n]) return n;

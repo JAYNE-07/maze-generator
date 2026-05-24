@@ -16,6 +16,7 @@ import {
   type PageSize,
   type SolutionMode,
 } from './lib/book';
+import { CANONICAL_KEYWORDS } from './lib/themes';
 
 const LEVELS = [
   { name: 'Easy', cols: 36 },
@@ -45,7 +46,7 @@ function dirBetween(a: number, b: number, cols: number): number {
 }
 
 export default function App() {
-  const [keyword, setKeyword] = useState('cat');
+  const [keyword, setKeyword] = useState('animals');
   const [level, setLevel] = useState(1);
   const [count, setCount] = useState(200);
   const [status, setStatus] = useState<Status>('idle');
@@ -305,12 +306,17 @@ export default function App() {
 
       <div className="panel">
         <div className="row">
-          <input
+          <select
+            className="keyword-select"
             value={keyword}
-            placeholder="e.g. animals, sea, vehicles, dinosaurs — or one thing like cat"
             onChange={(e) => setKeyword(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && generate()}
-          />
+          >
+            {CANONICAL_KEYWORDS.map((k) => (
+              <option key={k} value={k}>
+                {k}
+              </option>
+            ))}
+          </select>
           <label className="num">
             Mazes
             <input

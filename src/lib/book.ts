@@ -124,7 +124,9 @@ export async function generateBatch(
   count: number,
   onProgress: (done: number, total: number) => void,
 ): Promise<BatchResult> {
-  const CONCURRENCY = 3;
+  // Pollinations comfortably handles ~6 parallel requests per browser before
+  // it starts rate-limiting; the refill rounds catch any that slip through.
+  const CONCURRENCY = 6;
   const results: (BookMaze | null)[] = new Array(count).fill(null);
   let completed = 0;
   // Reserve the first `count` pool positions for the book; any rotations
@@ -188,10 +190,12 @@ export async function generateBatch(
     return m;
   };
 
-  // Round 1: requested density, AI on.
+  // Round 1: requested density, AI on. Two attempts per subject — failures
+  // are caught by the refill rounds below, so we don't want to spend extra
+  // time hammering the same unreliable subject up front.
   await runPool(
     Array.from({ length: count }, (_, i) => i),
-    3,
+    2,
     cols,
     CONCURRENCY,
   );

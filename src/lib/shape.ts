@@ -110,9 +110,11 @@ export async function fetchSilhouette(
   if (!opts.skipAI) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
+        // 12s timeout: most Pollinations responses arrive in 2-6 s; 20 s was
+        // too forgiving on stalled connections and made big batches drag.
         const img = await loadImage(
           pollinationsUrl(keyword, seed + attempt * 1009),
-          20000,
+          12000,
         );
         const dark = rasterize(img);
         const filled = dark.reduce((a, b) => a + b, 0) / dark.length;

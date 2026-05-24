@@ -63,6 +63,30 @@ function strokePath(
   ctx.restore();
 }
 
+/** Walk outward from `idx` in `openDir` until we leave the silhouette
+ *  (hit an exterior cell or the grid edge). Returns how many cells we
+ *  stepped past — i.e. the gap width the marker has to clear. */
+function silhouetteDepthAt(maze: Maze, idx: number, openDir: number): number {
+  if (openDir < 0) return 0;
+  const { cols, rows, cells } = maze;
+  let r = Math.floor(idx / cols);
+  let c = idx % cols;
+  let steps = 0;
+  // First step crosses the gate; subsequent steps cross any silhouette
+  // cells past it. Cap at a sensible distance so we never push the marker
+  // off-canvas on weird shapes.
+  for (let k = 0; k < 12; k++) {
+    r += ODY[openDir];
+    c += ODX[openDir];
+    if (r < 0 || c < 0 || r >= rows || c >= cols) break;
+    if (!cells[r * cols + c]) {
+      steps = k + 1;
+      break;
+    }
+  }
+  return steps;
+}
+
 /** Centre + half-size of the marker. The finish marker is intentionally
  *  larger than the start so the goal stands out clearly. */
 function markerGeom(
@@ -73,10 +97,16 @@ function markerGeom(
   finish: boolean,
 ) {
   const { x, y } = cellXY(maze, idx, cell);
+  // Smaller markers (was 1.05 / 0.62) so they don't dominate the maze area.
   const r = finish
-    ? Math.max(cell * 1.05, 8) // ~2 cells: goal pops
-    : Math.max(cell * 0.62, 4); // ~1.25 cells: tunnel-sized start
-  const off = openDir >= 0 ? cell * 0.5 + r + cell * 0.1 : 0;
+    ? Math.max(cell * 0.7, 6)
+    : Math.max(cell * 0.5, 4);
+  // Push the marker past any silhouette cells that sit on the other side
+  // of the gate. depth = first-exterior coordinate from cell idx; the
+  // silhouette's outer edge in this direction sits at (depth - 0.5)*cell.
+  // Marker centre = that edge + r + a small pad.
+  const depth = Math.max(1, silhouetteDepthAt(maze, idx, openDir));
+  const off = openDir >= 0 ? (depth - 0.35) * cell + r : 0;
   const d = openDir >= 0 ? openDir : 0;
   return {
     cx: x + cell / 2 + ODX[d] * off,

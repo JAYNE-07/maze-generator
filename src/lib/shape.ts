@@ -105,20 +105,23 @@ export async function fetchSilhouette(
   seed: number,
   opts: ShapeOpts = {},
 ): Promise<Silhouette> {
-  // Primary: free AI image generation. One attempt — multiple retries here
-  // multiplied the slowest-fetch tax in every batch. Failures fall through
-  // to Iconify and finally to the procedural fallback, none of which can
-  // hang the batch.
+  // Primary: free AI image generation. Two attempts with different seeds —
+  // the second only fires if the first either timed out or returned a
+  // shape outside the usable fill range. Procedural fallback below catches
+  // anything past that, so the batch never stalls.
   if (!opts.skipAI) {
-    try {
-      // 8 s timeout: typical Pollinations responses arrive in 2-6 s. Tighter
-      // than before so a single stalled connection can't drag the whole batch.
-      const img = await loadImage(pollinationsUrl(keyword, seed), 8000);
-      const dark = rasterize(img);
-      const filled = dark.reduce((a, b) => a + b, 0) / dark.length;
-      if (filled > 0.18 && filled < 0.55) return { dark, source: 'ai' };
-    } catch {
-      /* fall through to Iconify */
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const img = await loadImage(
+          pollinationsUrl(keyword, seed + attempt * 1009),
+          8000,
+        );
+        const dark = rasterize(img);
+        const filled = dark.reduce((a, b) => a + b, 0) / dark.length;
+        if (filled > 0.18 && filled < 0.55) return { dark, source: 'ai' };
+      } catch {
+        /* try next attempt or fall through */
+      }
     }
   }
 
@@ -135,26 +138,46 @@ export async function fetchSilhouette(
 
   // Fallback 2: a procedural silhouette so we NEVER throw. The shape isn't
   // on-theme but the maze fills it anyway — much better than hanging the
-  // batch or skipping a slot.
-  return { dark: proceduralSilhouette(seed), source: 'icon' };
+  // batch or skipping a slot. We mix the keyword into the seed so different
+  // keywords produce visually distinct procedural sets (otherwise switching
+  // from "animals" to "vehicles" would yield the same generic shapes).
+  return { dark: proceduralSilhouette(seed, keyword), source: 'icon' };
 }
 
-/** One of 12 procedural silhouettes chosen by seed — guarantees that
- *  fetchSilhouette always returns a usable mask even when both Pollinations
- *  and Iconify are unreachable. */
-function proceduralSilhouette(seed: number): Uint8Array {
+/** One of 12 base procedural silhouettes, plus a per-subject rotation and
+ *  scale so each maze in a book gets a visually distinct shape — even when
+ *  the whole batch falls through to procedural (e.g. Pollinations is down).
+ *  Mixing the keyword's hash into the variant selector means "animals" and
+ *  "vehicles" never pick the same shape index for the same maze index. */
+function proceduralSilhouette(seed: number, keyword: string): Uint8Array {
+  // djb2 hash of the keyword/subject string so it deterministically perturbs
+  // the seed without ever colliding across different keywords.
+  let h = 5381 >>> 0;
+  for (let i = 0; i < keyword.length; i++) {
+    h = (((h << 5) + h) ^ keyword.charCodeAt(i)) >>> 0;
+  }
+  const mixed = (seed ^ h) >>> 0;
+
   const dark = new Uint8Array(SAMPLE * SAMPLE);
   const cx = SAMPLE / 2;
   const cy = SAMPLE / 2;
-  const r = SAMPLE * 0.42;
-  const variant = ((seed >>> 0) % 12);
+  const scale = 0.78 + ((mixed >>> 12) % 7) * 0.04; // 0.78 .. 1.02
+  const r = SAMPLE * 0.42 * scale;
+  const variant = (mixed % 12);
+  const rot = ((mixed >>> 4) % 360) * (Math.PI / 180);
+  const cosR = Math.cos(rot);
+  const sinR = Math.sin(rot);
   const set = (x: number, y: number) => {
     if (x >= 0 && x < SAMPLE && y >= 0 && y < SAMPLE) dark[y * SAMPLE + x] = 1;
   };
   for (let y = 0; y < SAMPLE; y++) {
     for (let x = 0; x < SAMPLE; x++) {
-      const dx = x - cx;
-      const dy = y - cy;
+      // Rotate the sample point around the centre so the variant test sees
+      // a rotated coordinate — gives 360 distinct silhouettes per variant.
+      const rx = x - cx;
+      const ry = y - cy;
+      const dx = rx * cosR - ry * sinR;
+      const dy = rx * sinR + ry * cosR;
       const d = Math.sqrt(dx * dx + dy * dy);
       let inside = false;
       switch (variant) {

@@ -61,13 +61,13 @@ const MONO_PACK_PRIORITY = [
   'tabler',
   'mdi-light',
 ];
-/** Emoji and multi-colour packs — their colours are baked in so they
- *  ignore `color=#000000` and rasterise as multi-coloured blobs. SKIP. */
+/** Tech/brand/logo packs — these icons are never on-theme for puzzle
+ *  keywords (lion/truck/pizza), they're company logos. Always exclude.
+ *  Emoji packs are now ALLOWED — their colours survive rasterisation
+ *  into a clean silhouette via the flood-fill in rasterize(). */
 const COLOUR_PACK_BLOCKLIST = [
-  'noto', 'noto-v1', 'twemoji', 'openmoji', 'emojione', 'emojione-v1',
-  'fluent-emoji', 'fluent-emoji-flat', 'fluent-emoji-high-contrast',
-  'fxemoji', 'streamline-emojis', 'dinkie-icons', 'flat-color-icons',
   'logos', 'devicon', 'devicon-plain', 'skill-icons', 'vscode-icons',
+  'simple-icons', 'cib', 'arcticons',
 ];
 
 // In-memory cache of matched icon lists keyed by search term. Forest has
@@ -77,7 +77,10 @@ const COLOUR_PACK_BLOCKLIST = [
 // seed from the cached match list (which has many icons per subject).
 const iconCache = new Map<string, string[] | null>();
 
-async function searchIconify(query: string): Promise<string[] | null> {
+/** Search Iconify for `query`. If no usable matches, try fallback queries
+ *  built from the words inside the query — so "forest owl" falls back to
+ *  "owl", "brown bear" to "bear", etc. Results cached per attempted key. */
+async function searchOne(query: string): Promise<string[] | null> {
   const key = query.trim().toLowerCase();
   if (!key) return null;
   if (iconCache.has(key)) return iconCache.get(key)!;
@@ -97,6 +100,9 @@ async function searchIconify(query: string): Promise<string[] | null> {
       if (COLOUR_PACK_BLOCKLIST.includes(prefix)) return false;
       if (/-(outline|outlined|line|light|lite|thin)$/.test(prefix)) return false;
       if (/-(outline|outlined|line)$/.test(slug)) return false;
+      // wantWords may be empty (single short word like "ox"); accept any
+      // matching slug in that case.
+      if (!wantWords.length) return true;
       return wantWords.some((w) => slug.toLowerCase().includes(w));
     });
     if (!matched.length) {
@@ -115,6 +121,26 @@ async function searchIconify(query: string): Promise<string[] | null> {
     iconCache.set(key, null);
     return null;
   }
+}
+
+async function searchIconify(query: string): Promise<string[] | null> {
+  // Try the full phrase first ("forest owl"), then each individual word
+  // ("forest", then "owl"). Iconify rarely indexes multi-word phrases, so
+  // single-word fallbacks rescue compound subjects.
+  const direct = await searchOne(query);
+  if (direct && direct.length) return direct;
+  const words = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length >= 3);
+  if (words.length <= 1) return null;
+  // Prefer the LAST word (usually the noun head: "brown bear" -> "bear",
+  // "forest owl" -> "owl", "sports car" -> "car").
+  for (const w of [...words].reverse()) {
+    const fallback = await searchOne(w);
+    if (fallback && fallback.length) return fallback;
+  }
+  return null;
 }
 
 async function iconifyUrl(keyword: string, seed: number): Promise<string | null> {
@@ -196,6 +222,11 @@ export interface ShapeOpts {
   skipAI?: boolean;
   /** Override what iconify searches for (use the clean base subject). */
   iconSearch?: string;
+  /** Last-resort search term if both `iconSearch` and its word fallbacks
+   *  return nothing — usually the original theme keyword so we at least
+   *  stay on-theme (e.g. a forest-book maze with no icon for 'oriole'
+   *  falls back to a forest/tree icon instead of a procedural blob). */
+  themeFallback?: string;
 }
 
 export async function fetchSilhouette(
@@ -211,7 +242,11 @@ export async function fetchSilhouette(
   // "lion" still gets variety (different lion-themed icons from different
   // icon packs — game-icons, noto, openmoji, tabler, etc.).
   try {
-    const url = await iconifyUrl(opts.iconSearch ?? keyword, seed);
+    const url =
+      (await iconifyUrl(opts.iconSearch ?? keyword, seed)) ??
+      (opts.themeFallback
+        ? await iconifyUrl(opts.themeFallback, seed)
+        : null);
     if (url) {
       const img = await loadImage(url, 8000);
       const dark = rasterize(img);

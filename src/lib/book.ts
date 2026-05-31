@@ -50,6 +50,7 @@ async function buildAt(
         fetchSilhouette(subject, seed, {
           skipAI: opts.skipAI,
           iconSearch: base,
+          themeFallback: keyword,
         }),
         opts.noMarkers
           ? Promise.resolve({ start: null, end: null })

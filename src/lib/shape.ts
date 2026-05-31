@@ -29,16 +29,9 @@ function loadImage(src: string, timeoutMs: number): Promise<HTMLImageElement> {
   });
 }
 
-function pollinationsUrl(keyword: string, seed: number): string {
-  const prompt =
-    `minimalist solid pure black silhouette of a single ${keyword}, ` +
-    `centered, large, filling most of the frame, plain pure white background, ` +
-    `extreme high contrast, flat 2D, no text, no shadow, no gradient, simple bold shape`;
-  return (
-    `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
-    `?width=${SAMPLE}&height=${SAMPLE}&nologo=true&model=flux&seed=${seed}`
-  );
-}
+// pollinationsUrl removed — the service started returning HTTP 402 Payment
+// Required around mid-2026. Iconify is the new primary source. Procedural
+// fallback below is the safety net.
 
 /** Iconify lookup. Returns an icon URL whose slug mentions the search term
  *  so we never leak off-theme icons. `seed` selects from the matching pool,

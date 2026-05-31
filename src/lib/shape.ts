@@ -70,47 +70,63 @@ const COLOUR_PACK_BLOCKLIST = [
   'logos', 'devicon', 'devicon-plain', 'skill-icons', 'vscode-icons',
 ];
 
-async function iconifyUrl(keyword: string, seed: number): Promise<string | null> {
-  const q = keyword.trim();
-  if (!q) return null;
-  const wantWords = q
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length > 2);
+// In-memory cache of matched icon lists keyed by search term. Forest has
+// 13 unique subjects but a 100-maze forest book otherwise hits Iconify
+// 100 times — well above its rate-limit threshold. Caching means we hit
+// Iconify only once per unique subject, then pick deterministically by
+// seed from the cached match list (which has many icons per subject).
+const iconCache = new Map<string, string[] | null>();
+
+async function searchIconify(query: string): Promise<string[] | null> {
+  const key = query.trim().toLowerCase();
+  if (!key) return null;
+  if (iconCache.has(key)) return iconCache.get(key)!;
+  const wantWords = key.split(/\s+/).filter((w) => w.length > 2);
   try {
     const res = await fetch(
-      `https://api.iconify.design/search?query=${encodeURIComponent(q)}&limit=128`,
+      `https://api.iconify.design/search?query=${encodeURIComponent(key)}&limit=128`,
     );
-    if (!res.ok) return null;
+    if (!res.ok) {
+      iconCache.set(key, null);
+      return null;
+    }
     const data = (await res.json()) as { icons?: string[] };
-    // Keyword has to actually appear in the slug AND the pack must not be
-    // a multi-colour emoji pack (those ignore the colour override).
     const matched = (data.icons ?? []).filter((n) => {
       if (!n.includes(':')) return false;
       const [prefix, slug] = n.split(':');
       if (COLOUR_PACK_BLOCKLIST.includes(prefix)) return false;
-      // Reject explicit outline variants that produce wispy line art.
       if (/-(outline|outlined|line|light|lite|thin)$/.test(prefix)) return false;
       if (/-(outline|outlined|line)$/.test(slug)) return false;
       return wantWords.some((w) => slug.toLowerCase().includes(w));
     });
-    if (!matched.length) return null;
-    // Rank by pack priority — game-icons (best silhouettes) first.
+    if (!matched.length) {
+      iconCache.set(key, null);
+      return null;
+    }
     const score = (n: string) => {
       const prefix = n.split(':')[0];
       const idx = MONO_PACK_PRIORITY.indexOf(prefix);
       return idx === -1 ? MONO_PACK_PRIORITY.length : idx;
     };
     matched.sort((a, b) => score(a) - score(b));
-    // Pick deterministically from the top half so a 30-maze book still
-    // sees variety, but never falls into the low-quality tail.
-    const top = matched.slice(0, Math.max(8, Math.ceil(matched.length / 2)));
-    const pick = top[(seed >>> 0) % top.length];
-    const [prefix, icon] = pick.split(':');
-    return `https://api.iconify.design/${prefix}/${icon}.svg?height=${SAMPLE}&color=%23000000`;
+    iconCache.set(key, matched);
+    return matched;
   } catch {
+    iconCache.set(key, null);
     return null;
   }
+}
+
+async function iconifyUrl(keyword: string, seed: number): Promise<string | null> {
+  const matched = await searchIconify(keyword);
+  if (!matched || !matched.length) return null;
+  // Pick deterministically from the top half so the seed varies the icon
+  // even when the same base subject repeats — a 100-maze forest book with
+  // 13 unique subjects still shows 100 different on-theme silhouettes.
+  const top = matched.slice(0, Math.max(8, Math.ceil(matched.length / 2)));
+  const pick = top[(seed >>> 0) % top.length];
+  const [prefix, icon] = pick.split(':');
+  return `https://api.iconify.design/${prefix}/${icon}.svg?height=${SAMPLE}&color=%23000000`;
 }
 
 /** Draw an image "contained" and centered on a white SAMPLE square, then

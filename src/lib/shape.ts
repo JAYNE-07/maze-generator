@@ -38,6 +38,17 @@ function loadImage(src: string, timeoutMs: number): Promise<HTMLImageElement> {
  *  so a 30-maze "lion" book gets 30 different lion icons from different
  *  packs (game-icons, noto, openmoji, tabler, mdi, etc.) instead of the
  *  same one every time. */
+/** Iconify packs that ship SOLID silhouettes / filled emojis — these
+ *  rasterise cleanly into maze silhouettes without needing flood-fill
+ *  rescue. We rank matches with one of these prefixes before anything else. */
+const SOLID_PACKS = new Set([
+  'game-icons', 'noto', 'noto-v1', 'twemoji', 'openmoji',
+  'emojione', 'emojione-v1', 'fluent-emoji', 'fluent-emoji-flat',
+  'fluent-emoji-high-contrast', 'fxemoji', 'streamline-emojis',
+]);
+/** Packs that are mostly outline / line-art — rank these last. */
+const OUTLINE_HINTS = ['-outline', '-outlined', '-line', '-lite', '-light'];
+
 async function iconifyUrl(keyword: string, seed: number): Promise<string | null> {
   const q = keyword.trim();
   if (!q) return null;
@@ -47,17 +58,27 @@ async function iconifyUrl(keyword: string, seed: number): Promise<string | null>
     .filter((w) => w.length > 2);
   try {
     const res = await fetch(
-      `https://api.iconify.design/search?query=${encodeURIComponent(q)}&limit=64`,
+      `https://api.iconify.design/search?query=${encodeURIComponent(q)}&limit=96`,
     );
     if (!res.ok) return null;
     const data = (await res.json()) as { icons?: string[] };
-    const icons = (data.icons ?? []).filter((n) => {
+    const matched = (data.icons ?? []).filter((n) => {
       const slug = (n.split(':')[1] ?? '').toLowerCase();
       return n.includes(':') && wantWords.some((w) => slug.includes(w));
     });
-    if (!icons.length) return null;
-    // Deterministic pick from the matched pool using the seed.
-    const pick = icons[(seed >>> 0) % icons.length];
+    if (!matched.length) return null;
+    // Bucket by pack quality: solid packs first, neutral packs, outline last.
+    const solid: string[] = [];
+    const neutral: string[] = [];
+    const outline: string[] = [];
+    for (const n of matched) {
+      const [prefix, slug] = n.split(':');
+      if (SOLID_PACKS.has(prefix) || prefix.includes('emoji')) solid.push(n);
+      else if (OUTLINE_HINTS.some((h) => prefix.includes(h) || slug.includes(h))) outline.push(n);
+      else neutral.push(n);
+    }
+    const ranked = [...solid, ...neutral, ...outline];
+    const pick = ranked[(seed >>> 0) % ranked.length];
     const [prefix, icon] = pick.split(':');
     return `https://api.iconify.design/${prefix}/${icon}.svg?height=${SAMPLE}&color=%23000000`;
   } catch {
@@ -65,7 +86,11 @@ async function iconifyUrl(keyword: string, seed: number): Promise<string | null>
   }
 }
 
-/** Draw an image "contained" and centered on a white SAMPLE square. */
+/** Draw an image "contained" and centered on a white SAMPLE square, then
+ *  convert to a SOLID silhouette via flood-fill-from-corner. This handles
+ *  both filled icons (game-icons, noto, openmoji) and OUTLINE icons
+ *  (mdi-outline, tabler, lucide, etc.) — outline icons become solid
+ *  silhouettes instead of wispy lines that produce useless mazes. */
 function rasterize(img: HTMLImageElement): Uint8Array {
   const canvas = document.createElement('canvas');
   canvas.width = SAMPLE;
@@ -83,12 +108,45 @@ function rasterize(img: HTMLImageElement): Uint8Array {
   ctx.drawImage(img, (SAMPLE - w) / 2, (SAMPLE - h) / 2, w, h);
 
   const { data } = ctx.getImageData(0, 0, SAMPLE, SAMPLE);
+  // Mark pixels that are clearly NOT background-white (so dark lines AND
+  // dark fills both count as "inside").
   const dark = new Uint8Array(SAMPLE * SAMPLE);
   for (let i = 0, p = 0; i < data.length; i += 4, p++) {
     const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-    dark[p] = lum < 145 ? 1 : 0;
+    dark[p] = lum < 200 ? 1 : 0;
   }
-  return dark;
+
+  // Flood-fill from all four corners through non-dark pixels. Anything not
+  // reached is interior — combined with the dark pixels, that's a solid
+  // silhouette regardless of whether the icon was filled or outlined.
+  const exterior = new Uint8Array(SAMPLE * SAMPLE);
+  const stack: number[] = [];
+  const visit = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= SAMPLE || y >= SAMPLE) return;
+    const i = y * SAMPLE + x;
+    if (dark[i] || exterior[i]) return;
+    exterior[i] = 1;
+    stack.push(i);
+  };
+  for (let i = 0; i < SAMPLE; i++) {
+    visit(i, 0);
+    visit(i, SAMPLE - 1);
+    visit(0, i);
+    visit(SAMPLE - 1, i);
+  }
+  while (stack.length) {
+    const cur = stack.pop()!;
+    const x = cur % SAMPLE;
+    const y = (cur - x) / SAMPLE;
+    visit(x - 1, y);
+    visit(x + 1, y);
+    visit(x, y - 1);
+    visit(x, y + 1);
+  }
+
+  const sil = new Uint8Array(SAMPLE * SAMPLE);
+  for (let i = 0; i < sil.length; i++) sil[i] = exterior[i] ? 0 : 1;
+  return sil;
 }
 
 export interface ShapeOpts {

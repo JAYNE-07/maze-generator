@@ -459,6 +459,21 @@ export default function App() {
           {warning}
         </div>
       )}
+      {mazes.length > 0 && (() => {
+        const icon = mazes.filter((m) => m.source === 'icon').length;
+        const proc = mazes.length - icon;
+        const allProc = proc === mazes.length;
+        return (
+          <div className="error" style={{
+            background: allProc ? '#3d1f1f' : '#1d3a1d',
+            borderColor: allProc ? '#7a3a3a' : '#3a7a3a',
+            color: allProc ? '#ffb3b3' : '#b3ffb3',
+          }}>
+            <strong>{icon}/{mazes.length}</strong> on-theme · <strong>{proc}/{mazes.length}</strong> procedural fallback
+            {allProc && ' — Iconify isn\'t reaching your browser. Check Network tab in DevTools for failed api.iconify.design requests.'}
+          </div>
+        );
+      })()}
 
       {status === 'loading' && !progress && (
         <div className="stage loadingbox">
@@ -492,7 +507,18 @@ export default function App() {
                   pageSize === '5x8' ? '5 / 8' : pageSize === '6x9' ? '6 / 9' : '210 / 297',
               }}
             >
-              <h2 className="maze-title">Maze {page + 1}</h2>
+              <h2 className="maze-title">
+                Maze {page + 1}
+                {mazes[page] && (
+                  <span style={{
+                    marginLeft: 12, fontSize: '0.6em', fontWeight: 400,
+                    color: mazes[page].source === 'icon' ? '#2e7d32' : '#c62828',
+                  }}>
+                    {mazes[page].subject} ·{' '}
+                    {mazes[page].source === 'icon' ? '✓ on-theme' : '⚠ procedural fallback'}
+                  </span>
+                )}
+              </h2>
               <div className="maze-fit">
                 <div className="canvas-wrap">
                   <canvas ref={mainRef} className="maze" />

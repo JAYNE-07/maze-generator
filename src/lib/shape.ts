@@ -6,7 +6,10 @@ export const SAMPLE = 600; // px of the offscreen silhouette buffer
 export interface Silhouette {
   /** SAMPLE x SAMPLE grayscale-derived "is dark pixel" buffer */
   dark: Uint8Array;
-  source: 'ai' | 'icon';
+  /** Where the mask came from: 'icon' = on-theme Iconify SVG;
+   *  'procedural' = generic geometric fallback (Iconify unreachable or
+   *  returned no usable mono icons for this keyword). */
+  source: 'icon' | 'procedural';
 }
 
 function loadImage(src: string, timeoutMs: number): Promise<HTMLImageElement> {
@@ -205,7 +208,7 @@ export async function fetchSilhouette(
 
   // FALLBACK: procedural silhouette so we never throw. Subject-aware
   // (different keywords/subjects produce different shape variants).
-  return { dark: proceduralSilhouette(seed, keyword), source: 'icon' };
+  return { dark: proceduralSilhouette(seed, keyword), source: 'procedural' };
 }
 
 /** One of 12 base procedural silhouettes, plus a per-subject rotation and

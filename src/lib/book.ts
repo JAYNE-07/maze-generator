@@ -14,6 +14,10 @@ export interface BookMaze {
   maze: Maze;
   markers: Markers;
   subject: string;
+  /** Where the silhouette came from — 'icon' = on-theme Iconify, 'procedural'
+   *  = generic fallback. Surfaced in the UI/PDF so users can tell at a
+   *  glance whether a particular shape is on-theme. */
+  source: 'icon' | 'procedural';
   /** Internal pool index — used to keep books free of subject repeats. */
   subjIdx: number;
 }
@@ -57,7 +61,7 @@ async function buildAt(
         cols,
         seed,
       );
-      return { maze, markers, subject: display, subjIdx };
+      return { maze, markers, subject: display, source: sil.source, subjIdx };
     } catch {
       /* same subject, new seed */
     }

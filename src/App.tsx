@@ -48,7 +48,7 @@ function dirBetween(a: number, b: number, cols: number): number {
 export default function App() {
   const [keyword, setKeyword] = useState('animals');
   const [level, setLevel] = useState(1);
-  const [count, setCount] = useState(200);
+  const [count, setCount] = useState(30);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');

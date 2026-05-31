@@ -1381,6 +1381,65 @@ let cacheOrder: number[] = [];
  *  picker so users can browse without referring to the CSV. */
 export const CANONICAL_KEYWORDS: string[] = Object.keys(CATEGORIES).sort();
 
+/** Curated dropdown list: one entry per *distinct* shape pool. Without
+ *  this, themes like `bakery` / `breakfast` / `dairyeggs` would all show
+ *  up as separate options even though they share the exact same pool
+ *  (via the EXTENDS chains). `label` is what users see; `key` is the
+ *  canonical keyword the rest of the codebase already understands. */
+export const PRIMARY_KEYWORDS: ReadonlyArray<{ label: string; key: string }> = [
+  { label: 'animals',        key: 'animals' },
+  { label: 'arctic',         key: 'arctic' },
+  { label: 'autumn',         key: 'autumn' },
+  { label: 'bears',          key: 'bears' },
+  { label: 'birds',          key: 'birds' },
+  { label: 'birthday',       key: 'birthday' },
+  { label: 'buildings',      key: 'buildings' },
+  { label: 'camping',        key: 'camping' },
+  { label: 'cats',           key: 'cats' },
+  { label: 'christmas',      key: 'christmas' },
+  { label: 'circus',         key: 'circus' },
+  { label: 'clothing',       key: 'clothing' },
+  { label: 'desert',         key: 'desert' },
+  { label: 'dogs',           key: 'dogs' },
+  { label: 'easter',         key: 'easter' },
+  { label: 'fantasy',        key: 'mythical' },
+  { label: 'farm',           key: 'farm' },
+  { label: 'food',           key: 'food' },
+  { label: 'forest',         key: 'forest' },
+  { label: 'halloween',      key: 'halloween' },
+  { label: 'hoofed animals', key: 'hoofed' },
+  { label: 'household',      key: 'furniture' },
+  { label: 'insects',        key: 'insects' },
+  { label: 'instruments',    key: 'instruments' },
+  { label: 'jobs',           key: 'jobs' },
+  { label: 'jungle',         key: 'jungle' },
+  { label: 'marsupials',     key: 'marsupials' },
+  { label: 'nature',         key: 'nature' },
+  { label: 'new year',       key: 'newyear' },
+  { label: 'nocturnal',      key: 'nocturnal' },
+  { label: 'pirates',        key: 'pirates' },
+  { label: 'plants',         key: 'plants' },
+  { label: 'pond',           key: 'pond' },
+  { label: 'primates',       key: 'primates' },
+  { label: 'reptiles',       key: 'reptiles' },
+  { label: 'rodents',        key: 'rodents' },
+  { label: 'sea life',       key: 'sea' },
+  { label: 'shapes',         key: 'shapes' },
+  { label: 'small mammals',  key: 'smallmammals' },
+  { label: 'space',          key: 'space' },
+  { label: 'sports',         key: 'sports' },
+  { label: 'spring',         key: 'spring' },
+  { label: 'summer',         key: 'summer' },
+  { label: 'tech',           key: 'tech' },
+  { label: 'thanksgiving',   key: 'thanksgiving' },
+  { label: 'toys',           key: 'toys' },
+  { label: 'travel',         key: 'travel' },
+  { label: 'valentines',     key: 'valentines' },
+  { label: 'vehicles',       key: 'vehicles' },
+  { label: 'wild canines',   key: 'wildcanines' },
+  { label: 'winter',         key: 'winterseason' },
+];
+
 export function resolveCategory(keyword: string): string | null {
   const n = keyword.trim().toLowerCase();
   if (CATEGORIES[n]) return n;

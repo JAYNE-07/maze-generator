@@ -105,40 +105,91 @@ export async function fetchSilhouette(
   seed: number,
   opts: ShapeOpts = {},
 ): Promise<Silhouette> {
-  // Primary: free AI image generation. Skip entirely when the caller has
-  // already given up on AI (final fallback round in book.ts).
+  // Primary: free AI image generation. One attempt — multiple retries here
+  // multiplied the slowest-fetch tax in every batch. Failures fall through
+  // to Iconify and finally to the procedural fallback, none of which can
+  // hang the batch.
   if (!opts.skipAI) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        // 12s timeout: most Pollinations responses arrive in 2-6 s; 20 s was
-        // too forgiving on stalled connections and made big batches drag.
-        const img = await loadImage(
-          pollinationsUrl(keyword, seed + attempt * 1009),
-          12000,
-        );
-        const dark = rasterize(img);
-        const filled = dark.reduce((a, b) => a + b, 0) / dark.length;
-        // Narrower band -> all shapes carry similar maze complexity.
-        if (filled > 0.18 && filled < 0.55) return { dark, source: 'ai' };
-      } catch {
-        await new Promise<void>((r) => setTimeout(r, 600));
-      }
+    try {
+      // 8 s timeout: typical Pollinations responses arrive in 2-6 s. Tighter
+      // than before so a single stalled connection can't drag the whole batch.
+      const img = await loadImage(pollinationsUrl(keyword, seed), 8000);
+      const dark = rasterize(img);
+      const filled = dark.reduce((a, b) => a + b, 0) / dark.length;
+      if (filled > 0.18 && filled < 0.55) return { dark, source: 'ai' };
+    } catch {
+      /* fall through to Iconify */
     }
   }
 
-  // Fallback: free icon library, but only if its slug actually matches.
+  // Fallback 1: free icon library, but only if its slug actually matches.
   try {
     const url = await iconifyUrl(opts.iconSearch ?? keyword);
     if (url) {
-      const img = await loadImage(url, 12000);
+      const img = await loadImage(url, 6000);
       return { dark: rasterize(img), source: 'icon' };
     }
   } catch {
     /* fall through */
   }
 
-  // No on-theme shape available — let the caller try a different subject.
-  throw new Error(`no on-theme shape for "${keyword}"`);
+  // Fallback 2: a procedural silhouette so we NEVER throw. The shape isn't
+  // on-theme but the maze fills it anyway — much better than hanging the
+  // batch or skipping a slot.
+  return { dark: proceduralSilhouette(seed), source: 'icon' };
+}
+
+/** One of 12 procedural silhouettes chosen by seed — guarantees that
+ *  fetchSilhouette always returns a usable mask even when both Pollinations
+ *  and Iconify are unreachable. */
+function proceduralSilhouette(seed: number): Uint8Array {
+  const dark = new Uint8Array(SAMPLE * SAMPLE);
+  const cx = SAMPLE / 2;
+  const cy = SAMPLE / 2;
+  const r = SAMPLE * 0.42;
+  const variant = ((seed >>> 0) % 12);
+  const set = (x: number, y: number) => {
+    if (x >= 0 && x < SAMPLE && y >= 0 && y < SAMPLE) dark[y * SAMPLE + x] = 1;
+  };
+  for (let y = 0; y < SAMPLE; y++) {
+    for (let x = 0; x < SAMPLE; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      let inside = false;
+      switch (variant) {
+        case 0: inside = d < r; break;                                    // disc
+        case 1: inside = Math.abs(dx) < r * 0.95 && Math.abs(dy) < r * 0.95; break; // square
+        case 2: { // heart-ish
+          const X = dx / r, Y = -dy / r;
+          const v = (X * X + Y * Y - 1) ** 3 - X * X * Y * Y * Y;
+          inside = v < 0;
+          break;
+        }
+        case 3: inside = d < r * (1 + 0.2 * Math.sin(Math.atan2(dy, dx) * 5)); break; // star
+        case 4: { // hexagon
+          const ax = Math.abs(dx), ay = Math.abs(dy);
+          inside = ay < r * 0.866 && ax * 0.5 + ay * 0.866 < r * 0.866;
+          break;
+        }
+        case 5: inside = Math.abs(dx) + Math.abs(dy) < r * 1.15; break;  // diamond
+        case 6: inside = (Math.abs(dx) < r * 0.3 || Math.abs(dy) < r * 0.3) && d < r; break; // cross
+        case 7: { // cloud
+          const blobs = [[-r * 0.5, 0, r * 0.55], [r * 0.5, 0, r * 0.55], [0, -r * 0.25, r * 0.6]];
+          for (const [bx, by, br] of blobs) {
+            if ((dx - bx) ** 2 + (dy - by) ** 2 < br * br) { inside = true; break; }
+          }
+          break;
+        }
+        case 8: inside = dy > -r * 0.9 && Math.abs(dx) < (r * 0.9 - dy * 0.5); break; // triangle
+        case 9: inside = (dx * dx) / (r * r) + (dy * dy) / (r * r * 0.65 * 0.65) < 1; break; // oval
+        case 10: inside = d < r * (1 + 0.25 * Math.sin(Math.atan2(dy, dx) * 6)); break; // 6-star
+        default: inside = Math.abs(dx) < r * 0.4 && dy < r * 0.7 && dy > -r * 0.95; // arrow
+      }
+      if (inside) set(x, y);
+    }
+  }
+  return dark;
 }
 
 /** Sample the silhouette into a cols x rows boolean grid (row-major). */

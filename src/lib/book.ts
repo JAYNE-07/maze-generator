@@ -124,9 +124,10 @@ export async function generateBatch(
   count: number,
   onProgress: (done: number, total: number) => void,
 ): Promise<BatchResult> {
-  // Pollinations comfortably handles ~6 parallel requests per browser before
-  // it starts rate-limiting; the refill rounds catch any that slip through.
-  const CONCURRENCY = 6;
+  // 8 concurrent fetches — Pollinations handles this comfortably, and the
+  // procedural fallback in shape.ts ensures slots NEVER stall waiting on
+  // a flaky image source.
+  const CONCURRENCY = 8;
   const results: (BookMaze | null)[] = new Array(count).fill(null);
   let completed = 0;
   // Reserve the first `count` pool positions for the book; any rotations
@@ -202,6 +203,9 @@ export async function generateBatch(
 
   // Refills: gradually ease density and let the rate limiter recover.
   // Last round drops the AI shape entirely so the slot is guaranteed to fill.
+  // Single quick refill round for the rare case a maze fails generation
+  // (e.g. an undersized shape after sampling). With the procedural
+  // fallback in shape.ts, image fetch failures never get this far.
   const refills: Array<{
     cols: number;
     attempts: number;
@@ -209,12 +213,7 @@ export async function generateBatch(
     waitMs: number;
     opts: BuildOpts;
   }> = [
-    { cols: Math.floor(cols * 0.85), attempts: 4, pool: 3, waitMs: 2000, opts: {} },
-    { cols: Math.floor(cols * 0.7), attempts: 5, pool: 2, waitMs: 5000, opts: {} },
-    { cols: Math.floor(cols * 0.55), attempts: 6, pool: 2, waitMs: 7000, opts: {} },
-    // Last-resort: skip Pollinations entirely, fall through to Iconify only.
-    // Almost always succeeds for canonical keywords.
-    { cols: Math.floor(cols * 0.5), attempts: 8, pool: 2, waitMs: 1000, opts: { skipAI: true } },
+    { cols: Math.floor(cols * 0.7), attempts: 3, pool: 4, waitMs: 500, opts: { skipAI: true } },
   ];
 
   for (const r of refills) {

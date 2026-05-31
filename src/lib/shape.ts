@@ -38,16 +38,34 @@ function loadImage(src: string, timeoutMs: number): Promise<HTMLImageElement> {
  *  so a 30-maze "lion" book gets 30 different lion icons from different
  *  packs (game-icons, noto, openmoji, tabler, mdi, etc.) instead of the
  *  same one every time. */
-/** Iconify packs that ship SOLID silhouettes / filled emojis — these
- *  rasterise cleanly into maze silhouettes without needing flood-fill
- *  rescue. We rank matches with one of these prefixes before anything else. */
-const SOLID_PACKS = new Set([
-  'game-icons', 'noto', 'noto-v1', 'twemoji', 'openmoji',
-  'emojione', 'emojione-v1', 'fluent-emoji', 'fluent-emoji-flat',
-  'fluent-emoji-high-contrast', 'fxemoji', 'streamline-emojis',
-]);
-/** Packs that are mostly outline / line-art — rank these last. */
-const OUTLINE_HINTS = ['-outline', '-outlined', '-line', '-lite', '-light'];
+/** Monochrome-friendly icon packs that ACTUALLY respect the `color`
+ *  query param — these rasterise into clean black silhouettes on white.
+ *  Listed roughly in order of silhouette quality. */
+const MONO_PACK_PRIORITY = [
+  'game-icons',          // hand-drawn solid black silhouettes — best
+  'material-symbols',
+  'mdi',                 // base mdi is filled (mdi-light + -outline are NOT)
+  'ic',
+  'iconamoon-solid',
+  'ph-fill',
+  'solar-bold',
+  'tabler-filled',
+  'mingcute-fill',
+  'ri-fill',
+  'carbon',
+  'iconoir',
+  'lucide',
+  'tabler',
+  'mdi-light',
+];
+/** Emoji and multi-colour packs — their colours are baked in so they
+ *  ignore `color=#000000` and rasterise as multi-coloured blobs. SKIP. */
+const COLOUR_PACK_BLOCKLIST = [
+  'noto', 'noto-v1', 'twemoji', 'openmoji', 'emojione', 'emojione-v1',
+  'fluent-emoji', 'fluent-emoji-flat', 'fluent-emoji-high-contrast',
+  'fxemoji', 'streamline-emojis', 'dinkie-icons', 'flat-color-icons',
+  'logos', 'devicon', 'devicon-plain', 'skill-icons', 'vscode-icons',
+];
 
 async function iconifyUrl(keyword: string, seed: number): Promise<string | null> {
   const q = keyword.trim();
@@ -58,27 +76,33 @@ async function iconifyUrl(keyword: string, seed: number): Promise<string | null>
     .filter((w) => w.length > 2);
   try {
     const res = await fetch(
-      `https://api.iconify.design/search?query=${encodeURIComponent(q)}&limit=96`,
+      `https://api.iconify.design/search?query=${encodeURIComponent(q)}&limit=128`,
     );
     if (!res.ok) return null;
     const data = (await res.json()) as { icons?: string[] };
+    // Keyword has to actually appear in the slug AND the pack must not be
+    // a multi-colour emoji pack (those ignore the colour override).
     const matched = (data.icons ?? []).filter((n) => {
-      const slug = (n.split(':')[1] ?? '').toLowerCase();
-      return n.includes(':') && wantWords.some((w) => slug.includes(w));
+      if (!n.includes(':')) return false;
+      const [prefix, slug] = n.split(':');
+      if (COLOUR_PACK_BLOCKLIST.includes(prefix)) return false;
+      // Reject explicit outline variants that produce wispy line art.
+      if (/-(outline|outlined|line|light|lite|thin)$/.test(prefix)) return false;
+      if (/-(outline|outlined|line)$/.test(slug)) return false;
+      return wantWords.some((w) => slug.toLowerCase().includes(w));
     });
     if (!matched.length) return null;
-    // Bucket by pack quality: solid packs first, neutral packs, outline last.
-    const solid: string[] = [];
-    const neutral: string[] = [];
-    const outline: string[] = [];
-    for (const n of matched) {
-      const [prefix, slug] = n.split(':');
-      if (SOLID_PACKS.has(prefix) || prefix.includes('emoji')) solid.push(n);
-      else if (OUTLINE_HINTS.some((h) => prefix.includes(h) || slug.includes(h))) outline.push(n);
-      else neutral.push(n);
-    }
-    const ranked = [...solid, ...neutral, ...outline];
-    const pick = ranked[(seed >>> 0) % ranked.length];
+    // Rank by pack priority — game-icons (best silhouettes) first.
+    const score = (n: string) => {
+      const prefix = n.split(':')[0];
+      const idx = MONO_PACK_PRIORITY.indexOf(prefix);
+      return idx === -1 ? MONO_PACK_PRIORITY.length : idx;
+    };
+    matched.sort((a, b) => score(a) - score(b));
+    // Pick deterministically from the top half so a 30-maze book still
+    // sees variety, but never falls into the low-quality tail.
+    const top = matched.slice(0, Math.max(8, Math.ceil(matched.length / 2)));
+    const pick = top[(seed >>> 0) % top.length];
     const [prefix, icon] = pick.split(':');
     return `https://api.iconify.design/${prefix}/${icon}.svg?height=${SAMPLE}&color=%23000000`;
   } catch {

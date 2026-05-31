@@ -1169,8 +1169,14 @@ const SYNONYMS: Record<string, string> = {
 };
 
 /** Categories pull from related sub-pools so each clears 101 subjects. */
+// EXTENDS = "this keyword's pool also pulls in subjects from these other
+// categories." DOWNWARD unions only (broad meta → narrow leaves). Earlier
+// versions had every leaf upward-extending to its broad parent ("forest"
+// → "animals"), creating cycles that gave every leaf the same giant pool
+// — picking "forest" returned BARRACUDA / KOIFISH / SCOTTISHFOLDCAT.
+// Leaves now resolve to ONLY their own on-theme subjects.
 const EXTENDS: Record<string, string[]> = {
-  // --- ANIMAL DOMAIN ---------------------------------------------------
+  // Broad meta keys — each unions all its direct children.
   animals: [
     'petanimals', 'dogs', 'cats', 'wildcats', 'bigcats', 'bears',
     'primates', 'hoofed', 'smallmammals', 'wildcanines', 'marsupials',
@@ -1178,160 +1184,79 @@ const EXTENDS: Record<string, string[]> = {
     'pond', 'birds', 'sea', 'insects', 'reptiles', 'amphibians',
     'dinosaurs', 'prehistoric',
   ],
-  dogs: [],
   cats: ['wildcats', 'bigcats'],
-  wildcats: ['cats', 'bigcats'],
-  bigcats: ['cats', 'wildcats'],
-  petanimals: ['animals'], bears: ['animals'], primates: ['animals'],
-  hoofed: ['animals'], smallmammals: ['animals'], wildcanines: ['animals'],
-  marsupials: ['animals'], rodents: ['animals'], nocturnal: ['animals'],
-  arctic: ['animals'], desert: ['animals'], forest: ['animals'],
-  jungle: ['animals'], farm: ['animals'], pond: ['animals'],
   birds: [
     'songbirds', 'birdsofprey', 'waterfowl', 'tropicalbirds',
     'flightlessbirds', 'commonbirds', 'shorebirds', 'morebirds',
   ],
-  songbirds: ['birds'], birdsofprey: ['birds'], waterfowl: ['birds'],
-  tropicalbirds: ['birds'], flightlessbirds: ['birds'],
-  commonbirds: ['birds'], shorebirds: ['birds'], morebirds: ['birds'],
   sea: [
     'fish', 'sharks', 'marinemammals', 'shellfish', 'cephalopods',
     'reefcreatures', 'morefish', 'shellcreatures', 'moresealife',
   ],
-  fish: ['sea'], sharks: ['sea'], marinemammals: ['sea'], shellfish: ['sea'],
-  cephalopods: ['sea'], reefcreatures: ['sea'], morefish: ['sea'],
-  shellcreatures: ['sea'], moresealife: ['sea'],
   insects: [
     'insectsbase', 'arachnids', 'crawlies', 'moreinsects', 'butterflies',
     'beetles',
   ],
-  insectsbase: ['insects'], arachnids: ['insects'], crawlies: ['insects'],
-  moreinsects: ['insects'], butterflies: ['insects'], beetles: ['insects'],
   reptiles: ['amphibians', 'dinosaurs', 'prehistoric'],
-  amphibians: ['reptiles', 'dinosaurs', 'prehistoric'],
-  dinosaurs: ['reptiles', 'amphibians', 'prehistoric'],
-  prehistoric: ['dinosaurs', 'reptiles', 'amphibians'],
-  // --- FOOD DOMAIN -----------------------------------------------------
   food: [
     'fruits', 'vegetables', 'desserts', 'bakery', 'breakfast', 'snacks',
     'drinks', 'fastfood', 'candies', 'worldfoods', 'dairyeggs',
   ],
-  fruits: ['food'], vegetables: ['food'], desserts: ['food'],
-  bakery: ['food'], breakfast: ['food'], snacks: ['food'], drinks: ['food'],
-  fastfood: ['food'], candies: ['food'], worldfoods: ['food'],
-  dairyeggs: ['food'],
-  // --- VEHICLE DOMAIN --------------------------------------------------
   vehicles: [
     'cars', 'trucks', 'planes', 'helicopters', 'boats', 'trains', 'bikes',
     'emergencyvehicles', 'construction', 'military', 'spacevehicles',
     'othervehicles',
   ],
-  cars: ['vehicles'], trucks: ['vehicles'], planes: ['vehicles'],
-  helicopters: ['vehicles'], boats: ['vehicles'], trains: ['vehicles'],
-  bikes: ['vehicles'], emergencyvehicles: ['vehicles'],
-  construction: ['vehicles'], military: ['vehicles'],
-  spacevehicles: ['vehicles'], othervehicles: ['vehicles'],
-  // --- NATURE DOMAIN ---------------------------------------------------
   nature: [
     'flowers', 'trees', 'plants', 'cacti', 'mushroomslist', 'foliage',
     'mountains', 'waterfeatures', 'weather', 'sky', 'gemstones', 'landforms',
   ],
-  flowers: ['plants', 'trees', 'cacti', 'mushroomslist', 'foliage'],
   plants: ['flowers', 'trees', 'cacti', 'mushroomslist', 'foliage'],
-  trees: ['flowers', 'plants', 'cacti', 'mushroomslist', 'foliage'],
-  cacti: ['flowers', 'plants', 'trees', 'mushroomslist', 'foliage'],
-  mushroomslist: ['flowers', 'plants', 'trees', 'cacti', 'foliage'],
-  foliage: ['flowers', 'plants', 'trees', 'cacti', 'mushroomslist'],
-  mountains: ['nature'], waterfeatures: ['nature'], landforms: ['nature'],
-  gemstones: ['nature'], weather: ['nature'], sky: ['nature'],
-  // --- SPORTS DOMAIN ---------------------------------------------------
   sports: [
     'ballsports', 'racketsports', 'wintersports', 'watersports', 'gym',
     'extreme', 'sportsgear', 'teamsports', 'athletics', 'martialarts',
     'sportsmisc',
   ],
-  ballsports: ['sports'], racketsports: ['sports'], wintersports: ['sports'],
-  watersports: ['sports'], gym: ['sports'], extreme: ['sports'],
-  sportsgear: ['sports'], teamsports: ['sports'], athletics: ['sports'],
-  martialarts: ['sports'], sportsmisc: ['sports'],
-  // --- BUILDINGS DOMAIN ------------------------------------------------
   buildings: [
     'houses', 'landmarks', 'religious', 'modernbuildings', 'historic',
     'structures', 'homestyles',
   ],
-  houses: ['buildings'], landmarks: ['buildings'], religious: ['buildings'],
-  modernbuildings: ['buildings'], historic: ['buildings'],
-  structures: ['buildings'], homestyles: ['buildings'],
-  // --- CLOTHING DOMAIN -------------------------------------------------
   clothing: [
     'tops', 'bottoms', 'outerwear', 'hats', 'shoes', 'accessories',
     'swimwear', 'formalwear',
   ],
-  tops: ['clothing'], bottoms: ['clothing'], outerwear: ['clothing'],
-  hats: ['clothing'], shoes: ['clothing'], accessories: ['clothing'],
-  swimwear: ['clothing'], formalwear: ['clothing'],
-  // --- SPACE DOMAIN ----------------------------------------------------
   space: [
     'planets', 'celestial', 'spacecraft', 'spacepeople', 'spacestuff',
     'astronomy', 'scifi', 'robots',
   ],
-  planets: ['space'], celestial: ['space'], spacecraft: ['space'],
-  spacepeople: ['space'], spacestuff: ['space'], astronomy: ['space'],
-  scifi: ['space'], robots: ['space'],
-  // --- INSTRUMENTS DOMAIN ----------------------------------------------
   instruments: [
     'strings', 'wind', 'brass', 'percussion', 'keyboards', 'musicstuff',
     'folkinstruments',
   ],
-  strings: ['instruments'], wind: ['instruments'], brass: ['instruments'],
-  percussion: ['instruments'], keyboards: ['instruments'],
-  musicstuff: ['instruments'], folkinstruments: ['instruments'],
-  // --- FANTASY DOMAIN --------------------------------------------------
   mythical: ['monsters', 'wizards', 'princesses', 'knights'],
-  monsters: ['mythical', 'wizards', 'knights'],
-  wizards: ['mythical', 'monsters', 'princesses'],
-  princesses: ['mythical', 'wizards', 'monsters'],
-  knights: ['mythical', 'monsters', 'wizards'],
-  // --- JOBS (self-sufficient) ------------------------------------------
-  jobs: [],
-  // --- HOUSEHOLD / TOOLS DOMAIN ----------------------------------------
-  tools: ['kitchen', 'appliances', 'furniture', 'bedroom', 'bathroom', 'office', 'cleaning', 'gardentools'],
-  kitchen: ['tools', 'appliances', 'furniture', 'bedroom', 'bathroom', 'office', 'cleaning', 'gardentools'],
-  appliances: ['tools', 'kitchen', 'furniture', 'bedroom', 'bathroom', 'office', 'cleaning', 'gardentools'],
-  furniture: ['tools', 'kitchen', 'appliances', 'bedroom', 'bathroom', 'office', 'cleaning', 'gardentools'],
-  bedroom: ['tools', 'kitchen', 'appliances', 'furniture', 'bathroom', 'office', 'cleaning', 'gardentools'],
-  bathroom: ['tools', 'kitchen', 'appliances', 'furniture', 'bedroom', 'office', 'cleaning', 'gardentools'],
-  office: ['tools', 'kitchen', 'appliances', 'furniture', 'bedroom', 'bathroom', 'cleaning', 'gardentools'],
-  cleaning: ['tools', 'kitchen', 'appliances', 'furniture', 'bedroom', 'bathroom', 'office', 'gardentools'],
-  gardentools: ['tools', 'kitchen', 'appliances', 'furniture', 'bedroom', 'bathroom', 'office', 'cleaning'],
-  // --- TECH / LEARNING DOMAIN ------------------------------------------
-  tech: ['gadgets', 'gaming', 'retrotech', 'science', 'school', 'boardgames', 'movies', 'money'],
-  gadgets: ['tech', 'gaming', 'retrotech', 'science', 'school', 'boardgames', 'movies', 'money'],
-  gaming: ['tech', 'gadgets', 'retrotech', 'science', 'school', 'boardgames', 'movies', 'money'],
-  retrotech: ['tech', 'gadgets', 'gaming', 'science', 'school', 'boardgames', 'movies', 'money'],
-  science: ['tech', 'gadgets', 'gaming', 'retrotech', 'school', 'boardgames', 'movies', 'money'],
-  school: ['tech', 'gadgets', 'gaming', 'retrotech', 'science', 'boardgames', 'movies', 'money'],
-  movies: ['tech', 'gadgets', 'gaming', 'retrotech', 'science', 'school', 'boardgames', 'money'],
-  money: ['tech', 'gadgets', 'gaming', 'retrotech', 'science', 'school', 'boardgames', 'movies'],
-  // --- TOYS ------------------------------------------------------------
+  // Household meta key — PRIMARY_KEYWORDS["household"] maps here.
+  furniture: [
+    'tools', 'kitchen', 'appliances', 'bedroom', 'bathroom', 'office',
+    'cleaning', 'gardentools',
+  ],
+  tech: [
+    'gadgets', 'gaming', 'retrotech', 'science', 'school', 'boardgames',
+    'movies', 'money',
+  ],
   toys: ['boardgames'],
-  boardgames: ['toys'],
-  // --- SHAPES ----------------------------------------------------------
   shapes: ['symbols'],
-  symbols: ['shapes'],
-  // --- SEASONAL / HOLIDAY (aggregators, intentionally broad) -----------
+  // Aggregator keywords — intentional cross-domain unions.
   summer: ['beach', 'waterfeatures'],
   spring: ['flowers', 'insects', 'songbirds'],
   autumn: ['forest', 'trees', 'vegetables', 'foliage'],
   winterseason: ['arctic', 'wintersports', 'christmas', 'weather'],
-  christmas: ['toys', 'winterseason', 'candies', 'desserts'],
+  christmas: ['toys', 'candies', 'desserts'],
   halloween: ['monsters', 'mythical', 'nocturnal', 'autumn'],
   easter: ['spring', 'flowers'],
   valentines: ['flowers', 'candies', 'desserts', 'bakery'],
   thanksgiving: ['autumn', 'vegetables', 'food'],
   birthday: ['toys', 'desserts', 'candies', 'bakery'],
   newyear: ['birthday', 'toys', 'celestial'],
-  // --- ACTIVITY / CHARACTER aggregators --------------------------------
   travel: ['vehicles', 'landmarks', 'camping'],
   camping: ['nature', 'forest'],
   beach: ['sea', 'summer'],

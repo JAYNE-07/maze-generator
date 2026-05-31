@@ -40,9 +40,12 @@ function pollinationsUrl(keyword: string, seed: number): string {
   );
 }
 
-/** Iconify lookup: only accept icons whose slug actually mentions the
- *  search term, so an off-theme icon never leaks into the book. */
-async function iconifyUrl(keyword: string): Promise<string | null> {
+/** Iconify lookup. Returns an icon URL whose slug mentions the search term
+ *  so we never leak off-theme icons. `seed` selects from the matching pool,
+ *  so a 30-maze "lion" book gets 30 different lion icons from different
+ *  packs (game-icons, noto, openmoji, tabler, mdi, etc.) instead of the
+ *  same one every time. */
+async function iconifyUrl(keyword: string, seed: number): Promise<string | null> {
   const q = keyword.trim();
   if (!q) return null;
   const wantWords = q
@@ -51,17 +54,18 @@ async function iconifyUrl(keyword: string): Promise<string | null> {
     .filter((w) => w.length > 2);
   try {
     const res = await fetch(
-      `https://api.iconify.design/search?query=${encodeURIComponent(q)}&limit=24`,
+      `https://api.iconify.design/search?query=${encodeURIComponent(q)}&limit=64`,
     );
     if (!res.ok) return null;
     const data = (await res.json()) as { icons?: string[] };
-    const icons = data.icons ?? [];
-    const match = icons.find((n) => {
+    const icons = (data.icons ?? []).filter((n) => {
       const slug = (n.split(':')[1] ?? '').toLowerCase();
-      return wantWords.some((w) => slug.includes(w));
+      return n.includes(':') && wantWords.some((w) => slug.includes(w));
     });
-    if (!match || !match.includes(':')) return null;
-    const [prefix, icon] = match.split(':');
+    if (!icons.length) return null;
+    // Deterministic pick from the matched pool using the seed.
+    const pick = icons[(seed >>> 0) % icons.length];
+    const [prefix, icon] = pick.split(':');
     return `https://api.iconify.design/${prefix}/${icon}.svg?height=${SAMPLE}&color=%23000000`;
   } catch {
     return null;
@@ -105,42 +109,27 @@ export async function fetchSilhouette(
   seed: number,
   opts: ShapeOpts = {},
 ): Promise<Silhouette> {
-  // Primary: free AI image generation. Two attempts with different seeds —
-  // the second only fires if the first either timed out or returned a
-  // shape outside the usable fill range. Procedural fallback below catches
-  // anything past that, so the batch never stalls.
-  if (!opts.skipAI) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const img = await loadImage(
-          pollinationsUrl(keyword, seed + attempt * 1009),
-          8000,
-        );
-        const dark = rasterize(img);
-        const filled = dark.reduce((a, b) => a + b, 0) / dark.length;
-        if (filled > 0.18 && filled < 0.55) return { dark, source: 'ai' };
-      } catch {
-        /* try next attempt or fall through */
-      }
-    }
-  }
-
-  // Fallback 1: free icon library, but only if its slug actually matches.
+  // PRIMARY: Iconify. Pollinations.ai started returning 402 Payment Required
+  // around mid-2026 so it's no longer usable as a free image source.
+  // Iconify is reliable, fast (~200 ms), free, and returns actual on-theme
+  // SVG icons (lion -> lion icon, truck -> truck icon, etc.).
+  // We pick from the top N matches using the seed so a 30-maze book of
+  // "lion" still gets variety (different lion-themed icons from different
+  // icon packs — game-icons, noto, openmoji, tabler, etc.).
   try {
-    const url = await iconifyUrl(opts.iconSearch ?? keyword);
+    const url = await iconifyUrl(opts.iconSearch ?? keyword, seed);
     if (url) {
-      const img = await loadImage(url, 6000);
-      return { dark: rasterize(img), source: 'icon' };
+      const img = await loadImage(url, 8000);
+      const dark = rasterize(img);
+      const filled = dark.reduce((a, b) => a + b, 0) / dark.length;
+      if (filled > 0.05 && filled < 0.85) return { dark, source: 'icon' };
     }
   } catch {
-    /* fall through */
+    /* fall through to procedural */
   }
 
-  // Fallback 2: a procedural silhouette so we NEVER throw. The shape isn't
-  // on-theme but the maze fills it anyway — much better than hanging the
-  // batch or skipping a slot. We mix the keyword into the seed so different
-  // keywords produce visually distinct procedural sets (otherwise switching
-  // from "animals" to "vehicles" would yield the same generic shapes).
+  // FALLBACK: procedural silhouette so we never throw. Subject-aware
+  // (different keywords/subjects produce different shape variants).
   return { dark: proceduralSilhouette(seed, keyword), source: 'icon' };
 }
 

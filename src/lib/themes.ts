@@ -1401,6 +1401,26 @@ function shuffledPool(
   return { pool, order: cacheOrder };
 }
 
+/** Per-pass cyclic-shifted index into the shuffled pool. Without this,
+ *  every pass through a small pool would use the SAME order (rabbit,
+ *  hedgehog, wolf, ... rabbit, hedgehog, wolf, ...) — the user sees the
+ *  same shapes appearing at predictable rhythm. Each pass is now shifted
+ *  by ⌊P/2⌋+pass so consecutive passes use a totally different sequence
+ *  AND the last subject of pass N never matches the first of pass N+1. */
+function pickFromPool(
+  pool: string[],
+  order: number[],
+  index: number,
+): string {
+  const P = pool.length;
+  if (!P) return '';
+  const pass = Math.floor(index / P);
+  const inPassIdx = index % P;
+  const shift = pass === 0 ? 0 : (Math.floor(P / 2) + pass - 1) % P;
+  const shifted = (inPassIdx + shift) % P;
+  return pool[order[shifted]];
+}
+
 /** Clean subject for display + icon lookup — never carries modifiers. */
 export function baseSubjectFor(
   keyword: string,
@@ -1408,7 +1428,7 @@ export function baseSubjectFor(
   seed: number,
 ): string {
   const { pool, order } = shuffledPool(keyword, seed);
-  return pool[order[index % pool.length]];
+  return pickFromPool(pool, order, index);
 }
 
 /** Title-friendly subject; carries a tag past the base pool so two slots
@@ -1419,7 +1439,7 @@ export function displaySubjectFor(
   seed: number,
 ): string {
   const { pool, order } = shuffledPool(keyword, seed);
-  const base = pool[order[index % pool.length]];
+  const base = pickFromPool(pool, order, index);
   const lap = Math.floor(index / pool.length);
   if (lap === 0) return base;
   const m = lap - 1;
@@ -1435,7 +1455,7 @@ export function subjectFor(
   seed: number,
 ): string {
   const { pool, order } = shuffledPool(keyword, seed);
-  const subject = pool[order[index % pool.length]];
+  const subject = pickFromPool(pool, order, index);
   const lap = Math.floor(index / pool.length);
   if (lap === 0) return subject;
   // pool × pose × style yields ≥ 200 unique strings for every keyword

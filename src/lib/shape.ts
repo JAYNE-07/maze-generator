@@ -173,12 +173,25 @@ async function iconifyUrlCombined(
   return `https://api.iconify.design/${prefix}/${icon}.svg?height=${SAMPLE}&color=%23000000`;
 }
 
+interface RasterVariant {
+  /** Radians. Rotates the icon around the canvas centre before sampling. */
+  rotate?: number;
+  /** Multiplier on top of the contain-fit scale. */
+  scale?: number;
+  /** Mirror horizontally. */
+  flipH?: boolean;
+}
+
 /** Draw an image "contained" and centered on a white SAMPLE square, then
  *  convert to a SOLID silhouette via flood-fill-from-corner. This handles
  *  both filled icons (game-icons, noto, openmoji) and OUTLINE icons
  *  (mdi-outline, tabler, lucide, etc.) — outline icons become solid
- *  silhouettes instead of wispy lines that produce useless mazes. */
-function rasterize(img: HTMLImageElement): Uint8Array {
+ *  silhouettes instead of wispy lines that produce useless mazes. The
+ *  optional `variant` lets the caller produce visually distinct
+ *  silhouettes from the SAME icon URL (rotation × flip × scale gives
+ *  16+ unique masks per icon, so a 500-maze book whose icon pool
+ *  collides on duplicates still looks visually varied). */
+function rasterize(img: HTMLImageElement, variant?: RasterVariant): Uint8Array {
   const canvas = document.createElement('canvas');
   canvas.width = SAMPLE;
   canvas.height = SAMPLE;
@@ -189,10 +202,16 @@ function rasterize(img: HTMLImageElement): Uint8Array {
   const iw = img.naturalWidth || SAMPLE;
   const ih = img.naturalHeight || SAMPLE;
   const pad = SAMPLE * 0.06;
-  const scale = Math.min((SAMPLE - pad * 2) / iw, (SAMPLE - pad * 2) / ih);
+  const fit = Math.min((SAMPLE - pad * 2) / iw, (SAMPLE - pad * 2) / ih);
+  const scale = fit * (variant?.scale ?? 1);
   const w = iw * scale;
   const h = ih * scale;
-  ctx.drawImage(img, (SAMPLE - w) / 2, (SAMPLE - h) / 2, w, h);
+  ctx.save();
+  ctx.translate(SAMPLE / 2, SAMPLE / 2);
+  if (variant?.flipH) ctx.scale(-1, 1);
+  if (variant?.rotate) ctx.rotate(variant.rotate);
+  ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  ctx.restore();
 
   const { data } = ctx.getImageData(0, 0, SAMPLE, SAMPLE);
   // Mark pixels that are clearly NOT background-white (so dark lines AND
@@ -273,7 +292,16 @@ export async function fetchSilhouette(
     );
     if (url) {
       const img = await loadImage(url, 8000);
-      const dark = rasterize(img);
+      // Variant derived from the rotation index: 8 rotations × 2 flips ×
+      // 4 scales = 64 distinct silhouettes per icon URL. Combined with
+      // the unique URLs across a book, even when icon URLs collide
+      // between mazes the silhouettes still look different.
+      const variant: RasterVariant = {
+        rotate: ((rotation >>> 0) % 8) * (Math.PI / 4),
+        scale: 0.82 + (((rotation >>> 3) % 4) * 0.05),
+        flipH: (((rotation >>> 5) & 1) === 1),
+      };
+      const dark = rasterize(img, variant);
       const filled = dark.reduce((a, b) => a + b, 0) / dark.length;
       if (filled > 0.05 && filled < 0.85) return { dark, source: 'icon' };
     }

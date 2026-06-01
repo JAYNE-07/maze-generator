@@ -143,34 +143,47 @@ async function searchIconify(query: string): Promise<string[] | null> {
   return null;
 }
 
-/** Combine the subject's icon list with the theme keyword's icon list so
- *  narrow subjects (hedgehog, 6 icons) keep producing unique on-theme
- *  shapes long after their personal pool is exhausted — the next icons
- *  come from the broader theme (forest/birds/animals icons). */
+/** djb2 string hash — used to spread subject picks across the theme pool
+ *  so different subjects with no own Iconify match don't all collide on
+ *  the same theme icon at the same rotation. */
+function hashStr(s: string): number {
+  let h = 5381 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (((h << 5) + h) ^ s.charCodeAt(i)) >>> 0;
+  }
+  return h;
+}
+
+/** Pick an Iconify icon URL for `subject`. Uses the subject's own matches
+ *  first; falls back to the theme keyword's matches, with a per-subject
+ *  offset so different subjects in the same theme pool never collide on
+ *  the same icon at the same rotation. */
 async function iconifyUrlCombined(
   subject: string,
   themeFallback: string | undefined,
   rotation: number,
 ): Promise<string | null> {
   const subjMatches = (await searchIconify(subject)) ?? [];
-  const themeMatches = themeFallback
-    ? ((await searchIconify(themeFallback)) ?? [])
-    : [];
-  // Concat with dedupe (subject icons first so they get used before theme).
-  const seen = new Set<string>();
-  const combined: string[] = [];
-  for (const list of [subjMatches, themeMatches]) {
-    for (const n of list) {
-      if (!seen.has(n)) {
-        seen.add(n);
-        combined.push(n);
-      }
+  // Subject has its OWN icon matches — cycle through those by rotation.
+  if (subjMatches.length) {
+    const pick = subjMatches[(rotation >>> 0) % subjMatches.length];
+    const [prefix, icon] = pick.split(':');
+    return `https://api.iconify.design/${prefix}/${icon}.svg?height=${SAMPLE}&color=%23000000`;
+  }
+  // Subject has NO own match — fall back to the theme keyword's pool.
+  // Per-subject hash offset so 100 different fallback subjects don't all
+  // pick the same theme icon at rotation 0 (which previously produced the
+  // user's "same snake-coil shape on every name" symptom).
+  if (themeFallback) {
+    const themeMatches = (await searchIconify(themeFallback)) ?? [];
+    if (themeMatches.length) {
+      const offset = hashStr(subject);
+      const pick = themeMatches[(offset + (rotation >>> 0)) % themeMatches.length];
+      const [prefix, icon] = pick.split(':');
+      return `https://api.iconify.design/${prefix}/${icon}.svg?height=${SAMPLE}&color=%23000000`;
     }
   }
-  if (!combined.length) return null;
-  const pick = combined[(rotation >>> 0) % combined.length];
-  const [prefix, icon] = pick.split(':');
-  return `https://api.iconify.design/${prefix}/${icon}.svg?height=${SAMPLE}&color=%23000000`;
+  return null;
 }
 
 interface RasterVariant {

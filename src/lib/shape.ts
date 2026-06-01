@@ -143,14 +143,32 @@ async function searchIconify(query: string): Promise<string[] | null> {
   return null;
 }
 
-async function iconifyUrl(keyword: string, seed: number): Promise<string | null> {
-  const matched = await searchIconify(keyword);
-  if (!matched || !matched.length) return null;
-  // Pick deterministically from the top half so the seed varies the icon
-  // even when the same base subject repeats — a 100-maze forest book with
-  // 13 unique subjects still shows 100 different on-theme silhouettes.
-  const top = matched.slice(0, Math.max(8, Math.ceil(matched.length / 2)));
-  const pick = top[(seed >>> 0) % top.length];
+/** Combine the subject's icon list with the theme keyword's icon list so
+ *  narrow subjects (hedgehog, 6 icons) keep producing unique on-theme
+ *  shapes long after their personal pool is exhausted — the next icons
+ *  come from the broader theme (forest/birds/animals icons). */
+async function iconifyUrlCombined(
+  subject: string,
+  themeFallback: string | undefined,
+  rotation: number,
+): Promise<string | null> {
+  const subjMatches = (await searchIconify(subject)) ?? [];
+  const themeMatches = themeFallback
+    ? ((await searchIconify(themeFallback)) ?? [])
+    : [];
+  // Concat with dedupe (subject icons first so they get used before theme).
+  const seen = new Set<string>();
+  const combined: string[] = [];
+  for (const list of [subjMatches, themeMatches]) {
+    for (const n of list) {
+      if (!seen.has(n)) {
+        seen.add(n);
+        combined.push(n);
+      }
+    }
+  }
+  if (!combined.length) return null;
+  const pick = combined[(rotation >>> 0) % combined.length];
   const [prefix, icon] = pick.split(':');
   return `https://api.iconify.design/${prefix}/${icon}.svg?height=${SAMPLE}&color=%23000000`;
 }
@@ -227,6 +245,11 @@ export interface ShapeOpts {
    *  stay on-theme (e.g. a forest-book maze with no icon for 'oriole'
    *  falls back to a forest/tree icon instead of a procedural blob). */
   themeFallback?: string;
+  /** Which icon variation to pick from the matched pool. Lets a book pick
+   *  a different icon every time the same subject repeats (e.g. the 1st
+   *  "rabbit" gets icon #0, the 2nd gets icon #1, etc.) so 550 mazes from
+   *  a 13-subject keyword still produce 550 strictly different shapes. */
+  iconRotation?: number;
 }
 
 export async function fetchSilhouette(
@@ -242,11 +265,12 @@ export async function fetchSilhouette(
   // "lion" still gets variety (different lion-themed icons from different
   // icon packs — game-icons, noto, openmoji, tabler, etc.).
   try {
-    const url =
-      (await iconifyUrl(opts.iconSearch ?? keyword, seed)) ??
-      (opts.themeFallback
-        ? await iconifyUrl(opts.themeFallback, seed)
-        : null);
+    const rotation = opts.iconRotation ?? seed;
+    const url = await iconifyUrlCombined(
+      opts.iconSearch ?? keyword,
+      opts.themeFallback,
+      rotation,
+    );
     if (url) {
       const img = await loadImage(url, 8000);
       const dark = rasterize(img);

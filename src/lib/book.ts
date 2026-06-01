@@ -51,6 +51,11 @@ async function buildAt(
           skipAI: opts.skipAI,
           iconSearch: base,
           themeFallback: keyword,
+          // subjIdx grows monotonically across a book. For a 550-maze book
+          // with 13 unique subjects the same subject is hit ~42 times;
+          // each hit gets a different rotation index so the same subject
+          // picks a different on-theme icon every time.
+          iconRotation: subjIdx,
         }),
         opts.noMarkers
           ? Promise.resolve({ start: null, end: null })

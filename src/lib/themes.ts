@@ -3086,23 +3086,19 @@ let cacheOrder: number[] = [];
  *  picker so users can browse without referring to the CSV. */
 export const CANONICAL_KEYWORDS: string[] = Object.keys(CATEGORIES).sort();
 
-/** Curated dropdown list: 15 broad keywords with the largest distinct
- *  subject pools. Each comfortably supports 550 strictly-different shapes
- *  per book (pool size × icons-per-subject, with the keyword's own icon
- *  list padded onto subjects that have a narrow Iconify match set). */
+/** Curated dropdown list: 11 broad genre keywords. Each catalog carries
+ *  ≥500 unique icon slugs. Birds, insects, and sea life fold into
+ *  `animals`; plants fold into `nature`. Each comfortably supports 550
+ *  strictly-different shapes per book. */
 export const PRIMARY_KEYWORDS: ReadonlyArray<{ label: string; key: string }> = [
   { label: 'animals',     key: 'animals' },
-  { label: 'birds',       key: 'birds' },
   { label: 'buildings',   key: 'buildings' },
   { label: 'clothing',    key: 'clothing' },
   { label: 'fantasy',     key: 'mythical' },
   { label: 'food',        key: 'food' },
   { label: 'household',   key: 'furniture' },
-  { label: 'insects',     key: 'insects' },
   { label: 'instruments', key: 'instruments' },
   { label: 'nature',      key: 'nature' },
-  { label: 'plants',      key: 'plants' },
-  { label: 'sea life',    key: 'sea' },
   { label: 'space',       key: 'space' },
   { label: 'sports',      key: 'sports' },
   { label: 'vehicles',    key: 'vehicles' },

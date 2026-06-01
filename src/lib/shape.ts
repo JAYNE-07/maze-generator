@@ -1,7 +1,9 @@
 // Turns a theme keyword into a binary silhouette mask using the curated
 // ICON_CATALOG. No Iconify search at runtime — every catalog slug is a
-// game-icons silhouette already verified on-theme for its keyword, so
-// wrong-context icons (e.g. a $ for "sand dollar") can't leak in.
+// verified on-theme silhouette for its keyword. Entries carry a pack
+// prefix (e.g. 'game-icons:lion', 'mdi:lion', 'material-symbols:pets')
+// since the catalog now spans 16 monochrome packs to clear 500 unique
+// slugs per genre.
 
 import { ICON_CATALOG } from './iconCatalog';
 
@@ -47,11 +49,12 @@ function hashStr(s: string): number {
   return h;
 }
 
-/** Pick a curated game-icons URL for `themeKey`. Returns null if no
+/** Pick a curated Iconify URL for `themeKey`. Returns null if no
  *  catalog entry exists for the keyword. The rotation + subjectHash
  *  index spreads picks deterministically across the catalog so a
  *  500-maze book hits a different catalog entry each time the keyword
- *  cycles. */
+ *  cycles. Each catalog slug carries its own pack prefix
+ *  (e.g. 'game-icons:lion', 'mdi:lion'). */
 function iconifyUrl(
   themeKey: string,
   rotation: number,
@@ -60,7 +63,12 @@ function iconifyUrl(
   const catalog = ICON_CATALOG[themeKey];
   if (!catalog || !catalog.length) return null;
   const idx = ((rotation >>> 0) + subjectHash) % catalog.length;
-  return `https://api.iconify.design/game-icons/${catalog[idx]}.svg?height=${SAMPLE}&color=%23000000`;
+  const pick = catalog[idx];
+  const sep = pick.indexOf(':');
+  if (sep < 0) return null;
+  const prefix = pick.slice(0, sep);
+  const slug = pick.slice(sep + 1);
+  return `https://api.iconify.design/${prefix}/${slug}.svg?height=${SAMPLE}&color=%23000000`;
 }
 
 interface RasterVariant {

@@ -124,23 +124,13 @@ async function searchOne(query: string): Promise<string[] | null> {
 }
 
 async function searchIconify(query: string): Promise<string[] | null> {
-  // Try the full phrase first ("forest owl"), then each individual word
-  // ("forest", then "owl"). Iconify rarely indexes multi-word phrases, so
-  // single-word fallbacks rescue compound subjects.
+  // Direct subject search ONLY. Word-level fallbacks (e.g. "sand dollar"
+  // -> "dollar") were finding wrong-context icons — a US dollar symbol
+  // for "sand dollar" in an animals book. If the direct search fails,
+  // the caller falls through to the theme keyword instead, which keeps
+  // every returned icon firmly on-theme.
   const direct = await searchOne(query);
-  if (direct && direct.length) return direct;
-  const words = query
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length >= 3);
-  if (words.length <= 1) return null;
-  // Prefer the LAST word (usually the noun head: "brown bear" -> "bear",
-  // "forest owl" -> "owl", "sports car" -> "car").
-  for (const w of [...words].reverse()) {
-    const fallback = await searchOne(w);
-    if (fallback && fallback.length) return fallback;
-  }
-  return null;
+  return direct && direct.length ? direct : null;
 }
 
 /** djb2 string hash — used to spread subject picks across the theme pool

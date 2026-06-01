@@ -1,5 +1,9 @@
-// Turns a theme keyword into a binary silhouette mask, using free services
-// (no API key): Pollinations text-to-image first, Iconify icons as fallback.
+// Turns a theme keyword into a binary silhouette mask using the curated
+// ICON_CATALOG. No Iconify search at runtime — every catalog slug is a
+// game-icons silhouette already verified on-theme for its keyword, so
+// wrong-context icons (e.g. a $ for "sand dollar") can't leak in.
+
+import { ICON_CATALOG } from './iconCatalog';
 
 export const SAMPLE = 600; // px of the offscreen silhouette buffer
 
@@ -8,7 +12,7 @@ export interface Silhouette {
   dark: Uint8Array;
   /** Where the mask came from: 'icon' = on-theme Iconify SVG;
    *  'procedural' = generic geometric fallback (Iconify unreachable or
-   *  returned no usable mono icons for this keyword). */
+   *  catalog empty for this keyword). */
   source: 'icon' | 'procedural';
 }
 
@@ -32,110 +36,9 @@ function loadImage(src: string, timeoutMs: number): Promise<HTMLImageElement> {
   });
 }
 
-// pollinationsUrl removed — the service started returning HTTP 402 Payment
-// Required around mid-2026. Iconify is the new primary source. Procedural
-// fallback below is the safety net.
-
-/** Iconify lookup. Returns an icon URL whose slug mentions the search term
- *  so we never leak off-theme icons. `seed` selects from the matching pool,
- *  so a 30-maze "lion" book gets 30 different lion icons from different
- *  packs (game-icons, noto, openmoji, tabler, mdi, etc.) instead of the
- *  same one every time. */
-/** Monochrome-friendly icon packs that ACTUALLY respect the `color`
- *  query param — these rasterise into clean black silhouettes on white.
- *  Listed roughly in order of silhouette quality. */
-const MONO_PACK_PRIORITY = [
-  'game-icons',          // hand-drawn solid black silhouettes — best
-  'material-symbols',
-  'mdi',                 // base mdi is filled (mdi-light + -outline are NOT)
-  'ic',
-  'iconamoon-solid',
-  'ph-fill',
-  'solar-bold',
-  'tabler-filled',
-  'mingcute-fill',
-  'ri-fill',
-  'carbon',
-  'iconoir',
-  'lucide',
-  'tabler',
-  'mdi-light',
-];
-/** Tech/brand/logo packs — these icons are never on-theme for puzzle
- *  keywords (lion/truck/pizza), they're company logos. Always exclude.
- *  Emoji packs are now ALLOWED — their colours survive rasterisation
- *  into a clean silhouette via the flood-fill in rasterize(). */
-const COLOUR_PACK_BLOCKLIST = [
-  'logos', 'devicon', 'devicon-plain', 'skill-icons', 'vscode-icons',
-  'simple-icons', 'cib', 'arcticons',
-];
-
-// In-memory cache of matched icon lists keyed by search term. Forest has
-// 13 unique subjects but a 100-maze forest book otherwise hits Iconify
-// 100 times — well above its rate-limit threshold. Caching means we hit
-// Iconify only once per unique subject, then pick deterministically by
-// seed from the cached match list (which has many icons per subject).
-const iconCache = new Map<string, string[] | null>();
-
-/** Search Iconify for `query`. If no usable matches, try fallback queries
- *  built from the words inside the query — so "forest owl" falls back to
- *  "owl", "brown bear" to "bear", etc. Results cached per attempted key. */
-async function searchOne(query: string): Promise<string[] | null> {
-  const key = query.trim().toLowerCase();
-  if (!key) return null;
-  if (iconCache.has(key)) return iconCache.get(key)!;
-  const wantWords = key.split(/\s+/).filter((w) => w.length > 2);
-  try {
-    const res = await fetch(
-      `https://api.iconify.design/search?query=${encodeURIComponent(key)}&limit=128`,
-    );
-    if (!res.ok) {
-      iconCache.set(key, null);
-      return null;
-    }
-    const data = (await res.json()) as { icons?: string[] };
-    const matched = (data.icons ?? []).filter((n) => {
-      if (!n.includes(':')) return false;
-      const [prefix, slug] = n.split(':');
-      if (COLOUR_PACK_BLOCKLIST.includes(prefix)) return false;
-      if (/-(outline|outlined|line|light|lite|thin)$/.test(prefix)) return false;
-      if (/-(outline|outlined|line)$/.test(slug)) return false;
-      // wantWords may be empty (single short word like "ox"); accept any
-      // matching slug in that case.
-      if (!wantWords.length) return true;
-      return wantWords.some((w) => slug.toLowerCase().includes(w));
-    });
-    if (!matched.length) {
-      iconCache.set(key, null);
-      return null;
-    }
-    const score = (n: string) => {
-      const prefix = n.split(':')[0];
-      const idx = MONO_PACK_PRIORITY.indexOf(prefix);
-      return idx === -1 ? MONO_PACK_PRIORITY.length : idx;
-    };
-    matched.sort((a, b) => score(a) - score(b));
-    iconCache.set(key, matched);
-    return matched;
-  } catch {
-    iconCache.set(key, null);
-    return null;
-  }
-}
-
-async function searchIconify(query: string): Promise<string[] | null> {
-  // Direct subject search ONLY. Word-level fallbacks (e.g. "sand dollar"
-  // -> "dollar") were finding wrong-context icons — a US dollar symbol
-  // for "sand dollar" in an animals book. If the direct search fails,
-  // the caller falls through to the theme keyword instead, which keeps
-  // every returned icon firmly on-theme.
-  const direct = await searchOne(query);
-  return direct && direct.length ? direct : null;
-}
-
-/** djb2 string hash — used to spread subject picks across the theme pool
- *  so different subjects with no own Iconify match don't all collide on
- *  the same theme icon at the same rotation. */
+/** djb2 string hash — used to spread subject picks across the catalog
+ *  so different subjects with no own match don't all collide on the same
+ *  catalog entry at the same rotation. */
 function hashStr(s: string): number {
   let h = 5381 >>> 0;
   for (let i = 0; i < s.length; i++) {
@@ -144,36 +47,20 @@ function hashStr(s: string): number {
   return h;
 }
 
-/** Pick an Iconify icon URL for `subject`. Uses the subject's own matches
- *  first; falls back to the theme keyword's matches, with a per-subject
- *  offset so different subjects in the same theme pool never collide on
- *  the same icon at the same rotation. */
-async function iconifyUrlCombined(
-  subject: string,
-  themeFallback: string | undefined,
+/** Pick a curated game-icons URL for `themeKey`. Returns null if no
+ *  catalog entry exists for the keyword. The rotation + subjectHash
+ *  index spreads picks deterministically across the catalog so a
+ *  500-maze book hits a different catalog entry each time the keyword
+ *  cycles. */
+function iconifyUrl(
+  themeKey: string,
   rotation: number,
-): Promise<string | null> {
-  const subjMatches = (await searchIconify(subject)) ?? [];
-  // Subject has its OWN icon matches — cycle through those by rotation.
-  if (subjMatches.length) {
-    const pick = subjMatches[(rotation >>> 0) % subjMatches.length];
-    const [prefix, icon] = pick.split(':');
-    return `https://api.iconify.design/${prefix}/${icon}.svg?height=${SAMPLE}&color=%23000000`;
-  }
-  // Subject has NO own match — fall back to the theme keyword's pool.
-  // Per-subject hash offset so 100 different fallback subjects don't all
-  // pick the same theme icon at rotation 0 (which previously produced the
-  // user's "same snake-coil shape on every name" symptom).
-  if (themeFallback) {
-    const themeMatches = (await searchIconify(themeFallback)) ?? [];
-    if (themeMatches.length) {
-      const offset = hashStr(subject);
-      const pick = themeMatches[(offset + (rotation >>> 0)) % themeMatches.length];
-      const [prefix, icon] = pick.split(':');
-      return `https://api.iconify.design/${prefix}/${icon}.svg?height=${SAMPLE}&color=%23000000`;
-    }
-  }
-  return null;
+  subjectHash = 0,
+): string | null {
+  const catalog = ICON_CATALOG[themeKey];
+  if (!catalog || !catalog.length) return null;
+  const idx = ((rotation >>> 0) + subjectHash) % catalog.length;
+  return `https://api.iconify.design/game-icons/${catalog[idx]}.svg?height=${SAMPLE}&color=%23000000`;
 }
 
 interface RasterVariant {
@@ -274,10 +161,10 @@ export interface ShapeOpts {
   skipAI?: boolean;
   /** Override what iconify searches for (use the clean base subject). */
   iconSearch?: string;
-  /** Last-resort search term if both `iconSearch` and its word fallbacks
-   *  return nothing — usually the original theme keyword so we at least
-   *  stay on-theme (e.g. a forest-book maze with no icon for 'oriole'
-   *  falls back to a forest/tree icon instead of a procedural blob). */
+  /** Theme keyword (e.g. 'animals', 'birds') used to look up
+   *  ICON_CATALOG[themeFallback]. Combined with iconRotation and a per-
+   *  subject hash, this guarantees a 500-maze book picks a different
+   *  catalog entry each maze. */
   themeFallback?: string;
   /** Which icon variation to pick from the matched pool. Lets a book pick
    *  a different icon every time the same subject repeats (e.g. the 1st
@@ -291,20 +178,14 @@ export async function fetchSilhouette(
   seed: number,
   opts: ShapeOpts = {},
 ): Promise<Silhouette> {
-  // PRIMARY: Iconify. Pollinations.ai started returning 402 Payment Required
-  // around mid-2026 so it's no longer usable as a free image source.
-  // Iconify is reliable, fast (~200 ms), free, and returns actual on-theme
-  // SVG icons (lion -> lion icon, truck -> truck icon, etc.).
-  // We pick from the top N matches using the seed so a 30-maze book of
-  // "lion" still gets variety (different lion-themed icons from different
-  // icon packs — game-icons, noto, openmoji, tabler, etc.).
+  // PRIMARY: curated game-icons catalog. Every entry is hand-verified
+  // on-theme so no wrong-context icons leak in (no more $ symbols for
+  // "sand dollar" in an animals book).
   try {
     const rotation = opts.iconRotation ?? seed;
-    const url = await iconifyUrlCombined(
-      opts.iconSearch ?? keyword,
-      opts.themeFallback,
-      rotation,
-    );
+    const themeKey = opts.themeFallback ?? keyword;
+    const subjectHash = opts.iconSearch ? hashStr(opts.iconSearch) : 0;
+    const url = iconifyUrl(themeKey, rotation, subjectHash);
     if (url) {
       const img = await loadImage(url, 8000);
       // Variant derived from the rotation index: 8 rotations × 2 flips ×

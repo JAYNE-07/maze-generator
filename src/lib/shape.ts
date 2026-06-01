@@ -217,14 +217,26 @@ function rasterize(img: HTMLImageElement, variant?: RasterVariant): Uint8Array {
   // Mark pixels that are clearly NOT background-white (so dark lines AND
   // dark fills both count as "inside").
   const dark = new Uint8Array(SAMPLE * SAMPLE);
+  let darkCount = 0;
   for (let i = 0, p = 0; i < data.length; i += 4, p++) {
     const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-    dark[p] = lum < 200 ? 1 : 0;
+    if (lum < 200) {
+      dark[p] = 1;
+      darkCount++;
+    }
   }
+  const filledRatio = darkCount / dark.length;
 
-  // Flood-fill from all four corners through non-dark pixels. Anything not
-  // reached is interior — combined with the dark pixels, that's a solid
-  // silhouette regardless of whether the icon was filled or outlined.
+  // If the icon already has solid-enough coverage (≥18% dark pixels), use
+  // dark pixels DIRECTLY — preserves interior detail (the lion's mane,
+  // the basketball's seams, the rabbit's ears) so every subject produces
+  // a visually distinct silhouette instead of being homogenised into a
+  // solid blob by the flood-fill below.
+  if (filledRatio >= 0.18) return dark;
+
+  // Sparse line-art icon — flood-fill from all four corners through non-
+  // dark pixels and treat unreached interior as silhouette. Rescues thin
+  // outline-only icons into a usable mask.
   const exterior = new Uint8Array(SAMPLE * SAMPLE);
   const stack: number[] = [];
   const visit = (x: number, y: number) => {

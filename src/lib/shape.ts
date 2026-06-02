@@ -47,28 +47,6 @@ function loadImage(src: string, timeoutMs: number): Promise<HTMLImageElement> {
   });
 }
 
-/** Pick a curated catalog entry for `themeKey`. Uses rotation index
- *  DIRECTLY (no hash mixing) so the n-th maze in a book picks
- *  catalog[n % len] — the first N mazes get N distinct catalog entries
- *  with zero collisions until the catalog wraps. Returns the icon URL
- *  AND a slug-derived subject name so the caller can display a name
- *  that always matches the rendered shape. */
-function iconifyPick(
-  themeKey: string,
-  rotation: number,
-): { url: string; subject: string; shapeKey: string } | null {
-  const catalog = ICON_CATALOG[themeKey];
-  if (!catalog || !catalog.length) return null;
-  const entry = catalog[(rotation >>> 0) % catalog.length];
-  const sep = entry.indexOf(':');
-  if (sep < 0) return null;
-  const prefix = entry.slice(0, sep);
-  const slug = entry.slice(sep + 1);
-  const subject = slug.replace(/-/g, ' ').trim();
-  const url = `https://api.iconify.design/${prefix}/${slug}.svg?height=${SAMPLE}&color=%23000000`;
-  return { url, subject, shapeKey: entry };
-}
-
 interface RasterVariant {
   /** Radians. Rotates the icon around the canvas centre before sampling. */
   rotate?: number;

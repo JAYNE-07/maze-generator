@@ -463,13 +463,23 @@ export default function App() {
         const icon = mazes.filter((m) => m.source === 'icon').length;
         const proc = mazes.length - icon;
         const allProc = proc === mazes.length;
+        // Count unique shapes (catalog slugs) so the banner detects when
+        // different-named mazes reuse the same icon URL.
+        const keys = mazes.map((m) => m.shapeKey).filter((k): k is string => !!k);
+        const uniqueShapes = new Set(keys).size;
+        const dupeShapes = keys.length - uniqueShapes;
+        const allUnique = dupeShapes === 0 && icon === mazes.length;
         return (
           <div className="error" style={{
-            background: allProc ? '#3d1f1f' : '#1d3a1d',
-            borderColor: allProc ? '#7a3a3a' : '#3a7a3a',
-            color: allProc ? '#ffb3b3' : '#b3ffb3',
+            background: allProc ? '#3d1f1f' : dupeShapes > 0 ? '#3a3320' : '#1d3a1d',
+            borderColor: allProc ? '#7a3a3a' : dupeShapes > 0 ? '#7a6a3a' : '#3a7a3a',
+            color: allProc ? '#ffb3b3' : dupeShapes > 0 ? '#ffe9a8' : '#b3ffb3',
           }}>
-            <strong>{icon}/{mazes.length}</strong> on-theme · <strong>{proc}/{mazes.length}</strong> procedural fallback
+            <strong>{icon}/{mazes.length}</strong> on-theme ·{' '}
+            <strong>{proc}/{mazes.length}</strong> procedural fallback ·{' '}
+            <strong>{uniqueShapes}/{icon}</strong> unique shapes
+            {dupeShapes > 0 && ` (${dupeShapes} repeats)`}
+            {allUnique && ' — every shape distinct ✓'}
             {allProc && ' — Iconify isn\'t reaching your browser. Check Network tab in DevTools for failed api.iconify.design requests.'}
           </div>
         );

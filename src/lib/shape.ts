@@ -20,6 +20,11 @@ export interface Silhouette {
    *  matches the rendered shape — never a stale subject from a separate
    *  word pool. */
   subject?: string;
+  /** Stable identifier for the rendered shape — `prefix:slug` when
+   *  source==='icon', or a procedural variant id otherwise. The book UI
+   *  uses this to detect duplicate shapes across the book even when
+   *  display names differ. */
+  shapeKey?: string;
 }
 
 function loadImage(src: string, timeoutMs: number): Promise<HTMLImageElement> {
@@ -51,7 +56,7 @@ function loadImage(src: string, timeoutMs: number): Promise<HTMLImageElement> {
 function iconifyPick(
   themeKey: string,
   rotation: number,
-): { url: string; subject: string } | null {
+): { url: string; subject: string; shapeKey: string } | null {
   const catalog = ICON_CATALOG[themeKey];
   if (!catalog || !catalog.length) return null;
   const entry = catalog[(rotation >>> 0) % catalog.length];
@@ -61,7 +66,7 @@ function iconifyPick(
   const slug = entry.slice(sep + 1);
   const subject = slug.replace(/-/g, ' ').trim();
   const url = `https://api.iconify.design/${prefix}/${slug}.svg?height=${SAMPLE}&color=%23000000`;
-  return { url, subject };
+  return { url, subject, shapeKey: entry };
 }
 
 interface RasterVariant {
@@ -191,7 +196,12 @@ export async function fetchSilhouette(
       const dark = rasterize(img);
       const filled = dark.reduce((a, b) => a + b, 0) / dark.length;
       if (filled > 0.05 && filled < 0.85) {
-        return { dark, source: 'icon', subject: pick.subject };
+        return {
+          dark,
+          source: 'icon',
+          subject: pick.subject,
+          shapeKey: pick.shapeKey,
+        };
       }
     }
   } catch {

@@ -18,6 +18,10 @@ export interface BookMaze {
    *  = generic fallback. Surfaced in the UI/PDF so users can tell at a
    *  glance whether a particular shape is on-theme. */
   source: 'icon' | 'procedural';
+  /** The picked catalog slug (e.g. 'mdi:polar-bear') if source==='icon'.
+   *  Lets the banner detect when two mazes use the same shape even when
+   *  their displayed subject names differ. */
+  shapeKey?: string;
   /** Internal pool index — used to keep books free of subject repeats. */
   subjIdx: number;
 }
@@ -75,6 +79,7 @@ async function buildAt(
         markers,
         subject: sil.subject ?? display,
         source: sil.source,
+        shapeKey: sil.shapeKey,
         subjIdx,
       };
     } catch {

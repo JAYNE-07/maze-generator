@@ -33,11 +33,16 @@ interface BuildOpts {
 }
 
 /** Build a single maze at a fixed subject index. Caller picks the index so
- *  the whole book stays free of subject repeats. */
+ *  the whole book stays free of subject repeats. `bookSlot` is the stable
+ *  position in the final book (0..count-1) — used as the icon rotation
+ *  so retries on different subjects still pick the slot's own catalog
+ *  entry, preventing the wrap-around repeats that happened when
+ *  retries pushed subjIdx past the catalog length. */
 async function buildAt(
   keyword: string,
   baseSeed: number,
   subjIdx: number,
+  bookSlot: number,
   cols: number,
   attempts: number,
   opts: BuildOpts = {},
@@ -55,11 +60,11 @@ async function buildAt(
           skipAI: opts.skipAI,
           iconSearch: base,
           themeFallback: keyword,
-          // subjIdx grows monotonically across a book. For a 550-maze book
-          // with 13 unique subjects the same subject is hit ~42 times;
-          // each hit gets a different rotation index so the same subject
-          // picks a different on-theme icon every time.
-          iconRotation: subjIdx,
+          // Icon picked deterministically from the book slot, NOT the
+          // (potentially retried) subjIdx. Slot 0 -> catalog[0], slot
+          // 1 -> catalog[1], etc. — every slot in a 500-maze book picks
+          // a different catalog entry regardless of subject retries.
+          iconRotation: bookSlot,
         }),
         opts.noMarkers
           ? Promise.resolve({ start: null, end: null })
@@ -115,13 +120,14 @@ export async function regenerateOne(
   cols: number,
   salt: number,
   used: Set<number>,
+  bookSlot: number,
 ): Promise<BookMaze | null> {
   let maxUsed = -1;
   for (const u of used) if (u > maxUsed) maxUsed = u;
   let candidate = maxUsed + 1 + (salt % 13);
   while (used.has(candidate)) candidate++;
   for (let rot = 0; rot < 10; rot++) {
-    const bm = await buildAt(keyword, baseSeed, candidate, cols, 3, { salt });
+    const bm = await buildAt(keyword, baseSeed, candidate, bookSlot, cols, 3, { salt });
     if (bm) return bm;
     do {
       candidate++;
@@ -172,6 +178,7 @@ export async function generateBatch(
         keyword,
         baseSeed,
         slotIdx[slot],
+        slot,           // stable book slot — drives the catalog pick
         slotCols,
         attempts,
         opts,

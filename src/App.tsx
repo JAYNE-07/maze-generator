@@ -145,6 +145,7 @@ export default function App() {
         LEVELS[level].cols,
         salt,
         used,
+        page,
       );
       if (!bm) throw new Error('Could not regenerate — try again.');
       usedEverRef.current.add(bm.subjIdx);

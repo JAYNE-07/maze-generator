@@ -179,34 +179,97 @@ export interface ShapeOpts {
   iconRotation?: number;
 }
 
+/** Per-batch tracking so two slots never pick the same catalog entry. */
+const claimedIcons = new Map<string, Set<number>>();
+/** Per-batch tracking of catalog indices whose icon failed to render
+ *  cleanly — never tried twice in the same book. */
+const failedIcons = new Map<string, Set<number>>();
+
+/** Call at the start of a book / batch to reset per-batch claim state. */
+export function resetCatalogClaims(themeKey?: string): void {
+  if (themeKey) {
+    claimedIcons.delete(themeKey);
+    failedIcons.delete(themeKey);
+  } else {
+    claimedIcons.clear();
+    failedIcons.clear();
+  }
+}
+
+function getSet(m: Map<string, Set<number>>, k: string): Set<number> {
+  let s = m.get(k);
+  if (!s) { s = new Set<number>(); m.set(k, s); }
+  return s;
+}
+
+/** Walk the catalog starting at `primaryIdx`, trying each entry in turn,
+ *  skipping ones already claimed by another slot or known to fail.
+ *  Claims the first entry that loads + rasterises cleanly. Releases
+ *  claims on render failure so the next slot can try it too if appropriate
+ *  (but it's also added to the failed set so we don't waste another fetch). */
+async function tryCatalogPick(
+  themeKey: string,
+  primaryIdx: number,
+): Promise<Silhouette | null> {
+  const catalog = ICON_CATALOG[themeKey];
+  if (!catalog || !catalog.length) return null;
+  const claimed = getSet(claimedIcons, themeKey);
+  const failed = getSet(failedIcons, themeKey);
+
+  for (let offset = 0; offset < catalog.length; offset++) {
+    const idx = ((primaryIdx >>> 0) + offset) % catalog.length;
+    if (claimed.has(idx) || failed.has(idx)) continue;
+
+    // Synchronously claim BEFORE the async fetch so concurrent slots
+    // (CONCURRENCY=8 pool) don't both pick the same entry.
+    claimed.add(idx);
+
+    const entry = catalog[idx];
+    const sep = entry.indexOf(':');
+    if (sep < 0) {
+      claimed.delete(idx);
+      failed.add(idx);
+      continue;
+    }
+    const prefix = entry.slice(0, sep);
+    const slug = entry.slice(sep + 1);
+    const url = `https://api.iconify.design/${prefix}/${slug}.svg?height=${SAMPLE}&color=%23000000`;
+
+    try {
+      const img = await loadImage(url, 8000);
+      const dark = rasterize(img);
+      const ratio = dark.reduce((a, b) => a + b, 0) / dark.length;
+      if (ratio > 0.05 && ratio < 0.85) {
+        return {
+          dark,
+          source: 'icon',
+          subject: slug.replace(/-/g, ' ').trim(),
+          shapeKey: entry,
+        };
+      }
+      // Bad fill ratio — release claim, blacklist for this batch.
+      claimed.delete(idx);
+      failed.add(idx);
+    } catch {
+      claimed.delete(idx);
+      failed.add(idx);
+    }
+  }
+  return null;
+}
+
 export async function fetchSilhouette(
   keyword: string,
   seed: number,
   opts: ShapeOpts = {},
 ): Promise<Silhouette> {
-  // PRIMARY: curated game-icons catalog. Every entry is hand-verified
-  // on-theme so no wrong-context icons leak in (no more $ symbols for
-  // "sand dollar" in an animals book).
-  try {
-    const rotation = opts.iconRotation ?? seed;
-    const themeKey = opts.themeFallback ?? keyword;
-    const pick = iconifyPick(themeKey, rotation);
-    if (pick) {
-      const img = await loadImage(pick.url, 8000);
-      const dark = rasterize(img);
-      const filled = dark.reduce((a, b) => a + b, 0) / dark.length;
-      if (filled > 0.05 && filled < 0.85) {
-        return {
-          dark,
-          source: 'icon',
-          subject: pick.subject,
-          shapeKey: pick.shapeKey,
-        };
-      }
-    }
-  } catch {
-    /* fall through to procedural */
-  }
+  // PRIMARY: curated catalog, with per-batch claim+release so every slot
+  // in a 500-book picks a different working entry. On failure the slot
+  // walks forward to the next unused entry instead of dying.
+  const rotation = opts.iconRotation ?? seed;
+  const themeKey = opts.themeFallback ?? keyword;
+  const pick = await tryCatalogPick(themeKey, rotation);
+  if (pick) return pick;
 
   // FALLBACK: procedural silhouette so we never throw. Subject-aware
   // (different keywords/subjects produce different shape variants).

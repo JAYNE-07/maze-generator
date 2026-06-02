@@ -3,7 +3,7 @@ import JSZip from 'jszip';
 import { generateMaze, type Maze } from './maze';
 import { renderToCanvas } from './render';
 import { fetchMarkers, type Markers } from './markers';
-import { fetchSilhouette, maskGrid } from './shape';
+import { fetchSilhouette, maskGrid, resetCatalogClaims } from './shape';
 import { baseSubjectFor, displaySubjectFor, subjectFor } from './themes';
 
 export type SolutionMode = 'after-each' | 'at-end';
@@ -154,6 +154,9 @@ export async function generateBatch(
   count: number,
   onProgress: (done: number, total: number) => void,
 ): Promise<BatchResult> {
+  // Fresh per-batch claim state in shape.ts so this book's slot-icon
+  // mapping isn't polluted by previous batches.
+  resetCatalogClaims(keyword);
   // 8 concurrent fetches — Pollinations handles this comfortably, and the
   // procedural fallback in shape.ts ensures slots NEVER stall waiting on
   // a flaky image source.

@@ -185,6 +185,16 @@ function getSet(m: Map<string, Set<number>>, k: string): Set<number> {
  *  Claims the first entry that loads + rasterises cleanly. Releases
  *  claims on render failure so the next slot can try it too if appropriate
  *  (but it's also added to the failed set so we don't waste another fetch). */
+/** Load a URL into an HTMLImageElement, retrying once on transient
+ *  failure (Iconify occasionally drops a request under burst load). */
+async function loadImageWithRetry(url: string, timeoutMs: number): Promise<HTMLImageElement> {
+  try {
+    return await loadImage(url, timeoutMs);
+  } catch {
+    return await loadImage(url, timeoutMs);
+  }
+}
+
 async function tryCatalogPick(
   themeKey: string,
   primaryIdx: number,
@@ -194,12 +204,12 @@ async function tryCatalogPick(
   const claimed = getSet(claimedIcons, themeKey);
   const failed = getSet(failedIcons, themeKey);
 
-  for (let offset = 0; offset < catalog.length; offset++) {
-    const idx = ((primaryIdx >>> 0) + offset) % catalog.length;
-    if (claimed.has(idx) || failed.has(idx)) continue;
-
-    // Synchronously claim BEFORE the async fetch so concurrent slots
-    // (CONCURRENCY=8 pool) don't both pick the same entry.
+  const tryIdx = async (
+    idx: number,
+    skipClaimedCheck: boolean,
+  ): Promise<Silhouette | null> => {
+    if (failed.has(idx)) return null;
+    if (!skipClaimedCheck && claimed.has(idx)) return null;
     claimed.add(idx);
 
     const entry = catalog[idx];
@@ -207,14 +217,14 @@ async function tryCatalogPick(
     if (sep < 0) {
       claimed.delete(idx);
       failed.add(idx);
-      continue;
+      return null;
     }
     const prefix = entry.slice(0, sep);
     const slug = entry.slice(sep + 1);
     const url = `https://api.iconify.design/${prefix}/${slug}.svg?height=${SAMPLE}&color=%23000000`;
 
     try {
-      const img = await loadImage(url, 8000);
+      const img = await loadImageWithRetry(url, 14000);
       const dark = rasterize(img);
       const ratio = dark.reduce((a, b) => a + b, 0) / dark.length;
       if (ratio > 0.05 && ratio < 0.85) {
@@ -225,13 +235,29 @@ async function tryCatalogPick(
           shapeKey: entry,
         };
       }
-      // Bad fill ratio — release claim, blacklist for this batch.
       claimed.delete(idx);
       failed.add(idx);
     } catch {
-      claimed.delete(idx);
+      if (!skipClaimedCheck) claimed.delete(idx);
       failed.add(idx);
     }
+    return null;
+  };
+
+  // PASS 1: strict uniqueness — walk catalog, skip claimed and failed.
+  for (let offset = 0; offset < catalog.length; offset++) {
+    const idx = ((primaryIdx >>> 0) + offset) % catalog.length;
+    const hit = await tryIdx(idx, false);
+    if (hit) return hit;
+  }
+  // PASS 2: relaxed — allow already-claimed-but-working icons so no slot
+  // dies just because it ran out of unique entries. Some shapes may
+  // repeat (better than falling to procedural).
+  for (let offset = 0; offset < catalog.length; offset++) {
+    const idx = ((primaryIdx >>> 0) + offset) % catalog.length;
+    if (failed.has(idx)) continue;
+    const hit = await tryIdx(idx, true);
+    if (hit) return hit;
   }
   return null;
 }

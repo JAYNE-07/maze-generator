@@ -185,14 +185,22 @@ function getSet(m: Map<string, Set<number>>, k: string): Set<number> {
  *  Claims the first entry that loads + rasterises cleanly. Releases
  *  claims on render failure so the next slot can try it too if appropriate
  *  (but it's also added to the failed set so we don't waste another fetch). */
-/** Load a URL into an HTMLImageElement, retrying once on transient
- *  failure (Iconify occasionally drops a request under burst load). */
+/** Load a URL into an HTMLImageElement, retrying up to 2 extra times on
+ *  transient failure. Iconify drops ~10% of requests under burst load;
+ *  the retries (with a small backoff) recover almost all of them. */
 async function loadImageWithRetry(url: string, timeoutMs: number): Promise<HTMLImageElement> {
-  try {
-    return await loadImage(url, timeoutMs);
-  } catch {
-    return await loadImage(url, timeoutMs);
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await loadImage(url, timeoutMs);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 200 + attempt * 300));
+      }
+    }
   }
+  throw lastErr instanceof Error ? lastErr : new Error('image load failed');
 }
 
 async function tryCatalogPick(
@@ -227,7 +235,10 @@ async function tryCatalogPick(
       const img = await loadImageWithRetry(url, 14000);
       const dark = rasterize(img);
       const ratio = dark.reduce((a, b) => a + b, 0) / dark.length;
-      if (ratio > 0.05 && ratio < 0.85) {
+      // Accept almost any reasonable fill ratio — false rejects here
+      // were padding the failed-set and starving later slots of unique
+      // catalog entries.
+      if (ratio > 0.015 && ratio < 0.97) {
         return {
           dark,
           source: 'icon',

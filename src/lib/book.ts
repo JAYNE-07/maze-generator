@@ -67,7 +67,16 @@ async function buildAt(
         cols,
         seed,
       );
-      return { maze, markers, subject: display, source: sil.source, subjIdx };
+      // Prefer the slug-derived subject (always matches the rendered
+       // icon). Fall back to the themes.ts display name only when the
+       // silhouette came from the procedural fallback (no icon to name).
+      return {
+        maze,
+        markers,
+        subject: sil.subject ?? display,
+        source: sil.source,
+        subjIdx,
+      };
     } catch {
       /* same subject, new seed */
     }

@@ -16,6 +16,10 @@ export interface Silhouette {
    *  'procedural' = generic geometric fallback (Iconify unreachable or
    *  catalog empty for this keyword). */
   source: 'icon' | 'procedural';
+  /** Human-readable name derived from the picked catalog slug. Always
+   *  matches the rendered shape — never a stale subject from a separate
+   *  word pool. */
+  subject?: string;
 }
 
 function loadImage(src: string, timeoutMs: number): Promise<HTMLImageElement> {
@@ -38,37 +42,26 @@ function loadImage(src: string, timeoutMs: number): Promise<HTMLImageElement> {
   });
 }
 
-/** djb2 string hash — used to spread subject picks across the catalog
- *  so different subjects with no own match don't all collide on the same
- *  catalog entry at the same rotation. */
-function hashStr(s: string): number {
-  let h = 5381 >>> 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (((h << 5) + h) ^ s.charCodeAt(i)) >>> 0;
-  }
-  return h;
-}
-
-/** Pick a curated Iconify URL for `themeKey`. Returns null if no
- *  catalog entry exists for the keyword. The rotation + subjectHash
- *  index spreads picks deterministically across the catalog so a
- *  500-maze book hits a different catalog entry each time the keyword
- *  cycles. Each catalog slug carries its own pack prefix
- *  (e.g. 'game-icons:lion', 'mdi:lion'). */
-function iconifyUrl(
+/** Pick a curated catalog entry for `themeKey`. Uses rotation index
+ *  DIRECTLY (no hash mixing) so the n-th maze in a book picks
+ *  catalog[n % len] — the first N mazes get N distinct catalog entries
+ *  with zero collisions until the catalog wraps. Returns the icon URL
+ *  AND a slug-derived subject name so the caller can display a name
+ *  that always matches the rendered shape. */
+function iconifyPick(
   themeKey: string,
   rotation: number,
-  subjectHash = 0,
-): string | null {
+): { url: string; subject: string } | null {
   const catalog = ICON_CATALOG[themeKey];
   if (!catalog || !catalog.length) return null;
-  const idx = ((rotation >>> 0) + subjectHash) % catalog.length;
-  const pick = catalog[idx];
-  const sep = pick.indexOf(':');
+  const entry = catalog[(rotation >>> 0) % catalog.length];
+  const sep = entry.indexOf(':');
   if (sep < 0) return null;
-  const prefix = pick.slice(0, sep);
-  const slug = pick.slice(sep + 1);
-  return `https://api.iconify.design/${prefix}/${slug}.svg?height=${SAMPLE}&color=%23000000`;
+  const prefix = entry.slice(0, sep);
+  const slug = entry.slice(sep + 1);
+  const subject = slug.replace(/-/g, ' ').trim();
+  const url = `https://api.iconify.design/${prefix}/${slug}.svg?height=${SAMPLE}&color=%23000000`;
+  return { url, subject };
 }
 
 interface RasterVariant {
@@ -192,17 +185,14 @@ export async function fetchSilhouette(
   try {
     const rotation = opts.iconRotation ?? seed;
     const themeKey = opts.themeFallback ?? keyword;
-    const subjectHash = opts.iconSearch ? hashStr(opts.iconSearch) : 0;
-    const url = iconifyUrl(themeKey, rotation, subjectHash);
-    if (url) {
-      const img = await loadImage(url, 8000);
-      // Icons render in their natural UPRIGHT orientation. With 700-entry
-      // catalogs every maze in a 500-maze book gets a unique icon, so
-      // we don't need rotation/flip/scale variants for variety — those
-      // were making icons appear sideways and upside-down.
+    const pick = iconifyPick(themeKey, rotation);
+    if (pick) {
+      const img = await loadImage(pick.url, 8000);
       const dark = rasterize(img);
       const filled = dark.reduce((a, b) => a + b, 0) / dark.length;
-      if (filled > 0.05 && filled < 0.85) return { dark, source: 'icon' };
+      if (filled > 0.05 && filled < 0.85) {
+        return { dark, source: 'icon', subject: pick.subject };
+      }
     }
   } catch {
     /* fall through to procedural */

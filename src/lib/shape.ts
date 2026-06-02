@@ -196,16 +196,11 @@ export async function fetchSilhouette(
     const url = iconifyUrl(themeKey, rotation, subjectHash);
     if (url) {
       const img = await loadImage(url, 8000);
-      // Variant derived from the rotation index: 8 rotations × 2 flips ×
-      // 4 scales = 64 distinct silhouettes per icon URL. Combined with
-      // the unique URLs across a book, even when icon URLs collide
-      // between mazes the silhouettes still look different.
-      const variant: RasterVariant = {
-        rotate: ((rotation >>> 0) % 8) * (Math.PI / 4),
-        scale: 0.82 + (((rotation >>> 3) % 4) * 0.05),
-        flipH: (((rotation >>> 5) & 1) === 1),
-      };
-      const dark = rasterize(img, variant);
+      // Icons render in their natural UPRIGHT orientation. With 700-entry
+      // catalogs every maze in a 500-maze book gets a unique icon, so
+      // we don't need rotation/flip/scale variants for variety — those
+      // were making icons appear sideways and upside-down.
+      const dark = rasterize(img);
       const filled = dark.reduce((a, b) => a + b, 0) / dark.length;
       if (filled > 0.05 && filled < 0.85) return { dark, source: 'icon' };
     }

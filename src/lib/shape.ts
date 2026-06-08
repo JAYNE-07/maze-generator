@@ -185,18 +185,20 @@ function getSet(m: Map<string, Set<number>>, k: string): Set<number> {
  *  Claims the first entry that loads + rasterises cleanly. Releases
  *  claims on render failure so the next slot can try it too if appropriate
  *  (but it's also added to the failed set so we don't waste another fetch). */
-/** Load a URL into an HTMLImageElement, retrying up to 2 extra times on
- *  transient failure. Iconify drops ~10% of requests under burst load;
- *  the retries (with a small backoff) recover almost all of them. */
+/** Load a URL into an HTMLImageElement, retrying up to 4 extra times on
+ *  transient failure with exponential backoff. Iconify drops ~10% of
+ *  requests under burst load; aggressive retries recover almost all of
+ *  them so the failed-set doesn't shrink the unique-icon pool. */
 async function loadImageWithRetry(url: string, timeoutMs: number): Promise<HTMLImageElement> {
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  const backoffs = [300, 700, 1500, 3000];
+  for (let attempt = 0; attempt < 5; attempt++) {
     try {
       return await loadImage(url, timeoutMs);
     } catch (err) {
       lastErr = err;
-      if (attempt < 2) {
-        await new Promise((r) => setTimeout(r, 200 + attempt * 300));
+      if (attempt < 4) {
+        await new Promise((r) => setTimeout(r, backoffs[attempt]));
       }
     }
   }
@@ -232,7 +234,7 @@ async function tryCatalogPick(
     const url = `https://api.iconify.design/${prefix}/${slug}.svg?height=${SAMPLE}&color=%23000000`;
 
     try {
-      const img = await loadImageWithRetry(url, 14000);
+      const img = await loadImageWithRetry(url, 22000);
       const dark = rasterize(img);
       const ratio = dark.reduce((a, b) => a + b, 0) / dark.length;
       // Accept almost any reasonable fill ratio — false rejects here

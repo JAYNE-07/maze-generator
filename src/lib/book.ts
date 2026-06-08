@@ -157,9 +157,10 @@ export async function generateBatch(
   // Fresh per-batch claim state in shape.ts so this book's slot-icon
   // mapping isn't polluted by previous batches.
   resetCatalogClaims(keyword);
-  // 4 concurrent fetches — bursting any harder against Iconify under load
-  // causes timeouts that blacklist icons and shrink the usable pool.
-  const CONCURRENCY = 4;
+  // 2 concurrent fetches — running ANY harder against Iconify caused
+  // the failed-set to grow and shrink the unique-icon pool. Slower
+  // but every catalog entry gets a real chance to load cleanly.
+  const CONCURRENCY = 2;
   const results: (BookMaze | null)[] = new Array(count).fill(null);
   let completed = 0;
   // Reserve the first `count` pool positions for the book; any rotations

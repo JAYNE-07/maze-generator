@@ -28,6 +28,7 @@ export interface BookMaze {
 
 interface BuildOpts {
   skipAI?: boolean;
+  forceProcedural?: boolean;
   noMarkers?: boolean;
   salt?: number;
 }
@@ -58,6 +59,7 @@ async function buildAt(
       const [sil, markers] = await Promise.all([
         fetchSilhouette(subject, seed, {
           skipAI: opts.skipAI,
+          forceProcedural: opts.forceProcedural,
           iconSearch: base,
           themeFallback: keyword,
           // Icon picked deterministically from the book slot, NOT the
@@ -196,6 +198,22 @@ export async function generateBatch(
       const fresh = nextFree++;
       used.add(fresh);
       slotIdx[slot] = fresh;
+    }
+    // GUARANTEE: every slot fills. After all icon-based attempts failed,
+    // request a procedural silhouette so the book has exactly `count` mazes.
+    const fallback = await buildAt(
+      keyword,
+      baseSeed,
+      slotIdx[slot],
+      slot,
+      slotCols,
+      2,
+      { ...opts, forceProcedural: true },
+    );
+    if (fallback) {
+      results[slot] = fallback;
+      completed++;
+      onProgress(completed, count);
     }
   }
 

@@ -155,6 +155,10 @@ export interface ShapeOpts {
    *  "rabbit" gets icon #0, the 2nd gets icon #1, etc.) so 550 mazes from
    *  a 13-subject keyword still produce 550 strictly different shapes. */
   iconRotation?: number;
+  /** Skip the icon catalog entirely and return a procedural silhouette.
+   *  Used by buildAt as a last-resort to GUARANTEE a slot fills when
+   *  every catalog icon attempted yielded an unusable maze mask. */
+  forceProcedural?: boolean;
 }
 
 /** Per-batch tracking so two slots never pick the same catalog entry. */
@@ -280,6 +284,12 @@ export async function fetchSilhouette(
   seed: number,
   opts: ShapeOpts = {},
 ): Promise<Silhouette> {
+  // Force-procedural path: caller has exhausted catalog options and
+  // just needs a maze mask to keep the book contiguous.
+  if (opts.forceProcedural) {
+    return { dark: proceduralSilhouette(seed, keyword), source: 'procedural' };
+  }
+
   // PRIMARY: curated catalog, with per-batch claim+release so every slot
   // in a 500-book picks a different working entry. On failure the slot
   // walks forward to the next unused entry instead of dying.
